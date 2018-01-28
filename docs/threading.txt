@@ -1,0 +1,20 @@
+
+		    Principles of multi-threading query engines
+
+    Optimally threading the Backplane query engine requires tight
+    integration with data caches.  We have to know when a record
+    access will block on I/O and when it won't.  Once we do this
+    threading becomes a simple matter of running a query core engine
+    process for each cpu in the system.  A 1-cpu system would need
+    to run one query core process, a 2-cpu system would need to
+    run two, and so forth.
+
+    With this information in-hand each query core is able to implement
+    a cooperative multithreading model, eliminating any need for
+    intra-thread locks.  The core of the query engine will cooperatively
+    switch based on an artificial scheduling scheme which in turn is
+    based on the concept of priority and hogging.  Time-slices (and
+    caching parameters) can be chosen based on the actual amount of disk
+    I/O that needs to be initiated to satisfy a query.
+
+						-Matt

@@ -1,0 +1,126 @@
+.\" $Backplane: rdbms/man1/ddump.1,v 1.1 2002/03/19 05:43:15 dillon Exp $
+.\"
+.Dd March 18, 2002
+.Dt DDUMP 1
+.Os
+.Sh NAME
+.Nm ddump
+.Nd dump contents of database as SQL
+.Sh SYNOPSIS
+.Nm
+.Op @timestamp
+.Op Fl ansdq
+.Op Fl T Ar tsfile
+.Op Fl D Ar dbdir
+.Op Fl q
+.Op Fl GMT
+.Ar database[:schema.table]
+.Sh DESCRIPTION
+.Pp
+.Nm
+generates SQL statements to the standard output representing a
+snapshot of the entire contents of the specified database or
+the contents of a specific table.  By default the most recent
+synchronization point is used for the snapshot.
+.Nm
+uses streaming queries and can dump databases of any size without
+incuring any significant memory overhead.  Since the database uses
+a historical storage format, the snapshot incurs no additional
+overhead (and, in fact, all transactions are snapshots by default).
+.Pp
+The output of
+.Nm
+can be used to load a fresh, empty database by piping its output into
+.Nm rsql
+or
+.Nm dsql .
+Beyond that, there is no specific table or record order for the output.
+.Pp
+The following options are available:
+.Bl -tag -width indent
+.It @timestamp
+Dump a snapshot of the database as it appeared at particular date and
+time.  If not specified the most recent synchronization point is used.
+Timestamps may be in one of three formats:
+.Pp
+.Bl -tag -width indent
+.It 0xHEX
+A 64 bit 'raw' database timestamp value.  Database timestamps are
+essentially in UNIX time_t format scaled by microseconds.
+.It yyyy.mm.dd.hh.mm.ss.frac[G]
+For example, 2002.03.22.12.00.00.0G.  All fields are optional.  A 'G'
+suffix indicates that you are specifying the time in GMT units, otherwise
+the time is specified using your local time zone.
+.It ddmmmyyyy/hh:mm:ss.frac[G]
+For example, 23May2002.  The day and month is required, the year is optional,
+and the elements in the daytime are optional.  A 'G' suffix indicates
+that you are specifying the time in GMT units, otherwise the time
+is specified using your local time zone.
+.El
+.It Fl a
+Include system tables in the dump.  Normally
+.Nm
+comments out system tables in the dump, since they are mostly synthesized
+as side effects to the other SQL statements in the dump.
+.It Fl n
+Do not generate BEGIN/COMMIT sequences in the dump.  Normally
+.Nm
+generates BEGIN and COMMIT statements after each table create
+and for each block of 100 inserts to facilitate loading into a new
+database.
+.It Fl s
+Only dump the schema.  Do not dump table contents.  Normally
+.Nm
+dumps both the schema (e.g. as in CREATE TABLE ...) and the
+INSERTs representing the contents of the tables.
+.It Fl d
+Gegnerate a DROP TABLE statement prior to CREATE TABLE.  This
+option facilitates testing by allowing you to reload an existing
+database from scratch without having to destroy and recreate it.
+.It Fl q
+Tell
+.Nm
+to be less verbose on stderr.
+.It Fl T Ar tsfile
+Enforce transactional coherency between separate executions of
+.Nm
+and other programs supporting this option.  By default
+.Nm
+chooses the latest synchronization point but synchronization lags
+behind the COMMIT so running SQL queries in separate invocations
+of program binaries from a script do not necessarily guarentee
+that each invocation will be transactionally coherent with the
+prior invocation. 
+.Ar tsfile
+holds the timestamp representing the most recent commit.  If the
+file exists,
+.Nm
+will use this timestamp as the freeze point for the transaction,
+forcing it to be coherent.  The timestamp in the file will be updated
+to the latest commit timestamp when the program exits.  If the file does 
+not exist the latest synchronization point is used and the file is
+created on exit.
+.It Fl D Ar dbdir
+If specified,
+.Ar dbdir
+is used as the RDBMS directory instead of the contents of the
+RDBMS_DIR environment variable.  This directory must be the
+base directory used by the replicator running on the current host
+and serves as a rendezvous point so the program can access the
+database.
+.It Fl GMT
+Generating an ascii representation of timestamps in GMT.  If not
+specified timestamps are output using your local time zone.
+.It Ar database[:schema.table]
+Specify the database to dump.  You may also optionally specify a
+specific table to dump.
+.El
+.Pp
+.Sh EXAMPLES
+.Sh ENVIRONMENT
+.Sh SEE ALSO
+.Xr ddump 1
+.Sh HISTORY
+The
+.Nm
+command first appeared in version 1.0

@@ -1,0 +1,11 @@
+#!/bin/csh -f
+#
+
+if ( "$argv" == "" ) then
+    echo "start {A,B,C,...}"
+    echo "starts replication simulation for virtual host <AGR>"
+    exit 0
+endif
+
+replicator -L "drd_link -D /usr/local/drdbms%s" -V $argv -D /usr/local/drdbms$argv fubar
+

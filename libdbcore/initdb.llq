@@ -1,0 +1,60 @@
+# init.llq
+#
+# $Backplane: rdbms/libdbcore/initdb.llq,v 1.12 2001/12/12 05:35:39 dillon Exp $
+#
+# SYS schema holds
+#
+# 	SYS.SCHEMAS	A list of schemas we have created
+#	SYS.TABLES	A list of tables (within schemas) that we have created
+#	SYS.REPGROUP	Replication Group Management
+#
+# Note: +s, +t, and +i bootstrap commands should not be run inside a transaction
+#	or the changes will be lost.
+
+b
++s sys
++t4 sys.schemas
++t8 sys.tables
++t12 sys.repgroup
+
+# Special virtual tables (0, 1, 2, and 3)
+#
+#	VTable 0	- (reserved)
+#	VTable 1	- describe columns tables
+#	VTable 2	- (unassigned)
+#	VTable 3	- (unassigned)
+#
+i1 27:ColName 28:varchar 29:KN 31:001b
+i1 27:ColType 28:varchar 29:N 31:001c
+i1 27:ColFlags 28:varchar 31:001d
+i1 27:ColStatus 28:varchar 31:001e
+i1 27:ColId 28:varchar 29:N 31:001f
+i1 27:ColDefault 28:varchar 31:0020
+
+# Special bootstrap commit (The normal commit algorithm does not
+# work because we didn't use SQL queries to generate the bootstrap
+# insertions).  Note that SQL queries cannot be used with a bootstrap
+# commit.
+#
+C
+
+# Populate column definitions for system tables, allowing normal SQL
+# queries to be made on them.
+#
+b
+q INSERT INTO sys.schemas$cols ( ColName, ColType, ColFlags, ColId ) VALUES ( 'SchemaName', 'varchar', 'KN', '0011' )
+q INSERT INTO sys.schemas$cols ( ColName, ColType, ColFlags, ColId ) VALUES ( 'TableFile', 'varchar', 'N', '0015' )
+
+q INSERT INTO sys.tables$cols ( ColName, ColType, ColFlags, ColId ) VALUES ( 'SchemaName', 'varchar', 'KN', '0011' )
+q INSERT INTO sys.tables$cols ( ColName, ColType, ColFlags, ColId ) VALUES ( 'TableName', 'varchar', 'KN', '0012' )
+q INSERT INTO sys.tables$cols ( ColName, ColType, ColFlags, ColId ) VALUES ( 'TableVId', 'varchar', 'N', '0013' )
+q INSERT INTO sys.tables$cols ( ColName, ColType, ColFlags, ColId ) VALUES ( 'TableFile', 'varchar', 'N', '0015' )
+
+q INSERT INTO sys.repgroup$cols ( ColName, ColType, ColFlags, ColId ) VALUES ( 'HostName', 'varchar', 'KN', '0016' )
+q INSERT INTO sys.repgroup$cols ( ColName, ColType, ColFlags, ColId ) VALUES ( 'HostId', 'varchar', 'NU', '0017' )
+q INSERT INTO sys.repgroup$cols ( ColName, ColType, ColFlags, ColId ) VALUES ( 'HostType', 'varchar', 'N', '0018' )
+
+c
+# update syncts
+S
+

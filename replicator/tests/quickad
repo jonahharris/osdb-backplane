@@ -1,0 +1,11 @@
+#!/bin/csh -f
+#
+
+replicator -D /usr/local/drdbmsA -l B
+replicator -D /usr/local/drdbmsA -l C
+
+while (1)
+    replicator -D /usr/local/drdbmsC -e fubar
+    replicator -D /usr/local/drdbmsC -b fubar
+end
+

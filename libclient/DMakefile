@@ -1,0 +1,36 @@
+# DMakefile
+#
+# $Backplane: rdbms/libclient/DMakefile,v 1.12 2003/04/27 20:28:08 dillon Exp $
+
+all:
+	@echo " libclient (nothread)"
+	@dxmake -q -f DMakefile.nthread
+	@echo " libclient (dthread)"
+	@dxmake -q -f DMakefile.dthread
+	@echo " libclient (pthread)"
+	@dxmake -q -f DMakefile.pthread
+
+clean:
+	@echo " libclient (nothread)"
+	@dxmake -q -f DMakefile.nthread clean
+	@echo " libclient (dthread)"
+	@dxmake -q -f DMakefile.dthread clean
+	@echo " libclient (pthread)"
+	@dxmake -q -f DMakefile.pthread clean
+
+depend:
+	@echo " libclient (nothread)"
+	@dxmake -q -f DMakefile.nthread depend
+	@echo " libclient (dthread)"
+	@dxmake -q -f DMakefile.dthread depend
+	@echo " libclient (pthread)"
+	@dxmake -q -f DMakefile.pthread depend
+
+install:
+	@echo " libclient (nothread)"
+	@dxmake -q -f DMakefile.nthread install
+	@echo " libclient (dthread)"
+	@dxmake -q -f DMakefile.dthread install
+	@echo " libclient (pthread)"
+	@dxmake -q -f DMakefile.pthread install
+

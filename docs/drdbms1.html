@@ -1,0 +1,863 @@
+<HTML>
+<HEAD>
+<TITLE>The Backplane Inc. Fault-Tolerant DRDBMS $Backplane: rdbms/docs/drdbms1.html,v 1.3 2003/05/31 07:44:36 dillon Exp $</TITLE>
+</HEAD>
+<BODY>
+<CENTER><H2><B>The Backplane Inc. Fault-Tolerant DRDBMS</B></H2></CENTER>
+<CENTER><H2><B>8 December 2000</B></H2></CENTER>
+
+<P><H2><B>(I) General Overview - </B></H2>
+<UL>
+    <P>
+    The Backplane database is a replicated, transactional, fault-tolerant
+    relational database core implementing a subset of SQL.  Our goal is to
+    develop the database into a fully SQL-complaint system.  The main feature
+    of the backplane database is its peer-to-peer replication technology
+    which allows essentially infinite scaleability for read-only transactions
+    and moderately scaleable read-write transactions which require only a
+    quorum of the replication peers to be up in order to be fully 
+    operational.  The database guarentees transactional consistency across
+    the entire replication group.  The replication technology is extremely
+    fault-tolerant and is able to deal with individual peers going up and
+    down, even in the middle of a query.  This allows you, for example, to
+    implement a farm of web servers talking to a farm of database servers
+    and maintain transactional consistency across CGI executions running on
+    different web servers.  A single user session can in fact jump between
+    web servers on every submit and still maintain complete consistency.
+    <P>
+    The replicator is capable of managing many independant databases.  You
+    have complete control over which replication hosts replication which
+    database(s), and complete control over which replication hosts simply
+    snapshot a database (snapshots do not take part in the quorum-based
+    commit protocol but can take part in read-only queries.  Snapshots
+    are typically used for batch or near-realtime backups).
+    <P>
+    It is especially important to note that the Backplane replication system
+    uses a quorum-based two-phase commit protocol.  <B>This means that if you
+    have 5 PEERs replicating a database (and any number of additional SNAPshot
+    hosts), only 3 of those peers need to be up in order for the database
+    to be fully operational</B>.  Most other databases, include many major
+    commercial databases, implement only fully-synchronous replication or
+    asynchronous-push technologies.  Fully-synchronous technologies are not
+    fault-tolerant - one downed host takes down the whole system.  
+    Asynchronous push technologies cannot guarentee transactional consistency
+    between replication hosts and require a significant (sometimes immense)
+    effort in building conflict resolution procedures.  The backplane
+    replication technology only requires a quorum of PEERs to be operational
+    and implements background synchronization to bring hosts that lose
+    connectivity up to date.  The backplane replication technology is fully
+    transactionally coherent between replication PEERs whether or not they
+    are fully synchronized, which makes it ideal for web farms.  Additionally,
+    many databases cannot replicate meta-SQL commands such as
+    <B>alter table</B> reliably (or at all).  The backplane replication
+    technology replicates tables natively at the row-level and you can issue
+    every supported SQL command as easily in a replicated environment as
+    you would in a single-host environment.
+    <P>
+    <B>The Backplane database have a few limitations.</B>  There is still a
+    great deal of work that must be done to turn the system into an SQL
+    compliant and feature-full database.  We have implement all the hard
+    stuff: Table and schema creation and deletion, adding and dropping
+    columns, transactions (commit/rollback), replication, insert/update/delete,
+    and inherent primary key and unique field constraints (i.e. to check
+    for duplicate records).  We have also implemented inherent BTREE
+    indexing on WHERE clause elements and two case-insensitive
+    operators for case-insensitive tests and anchored substring searches.
+    We have not implemented two biggies:  triggers or foreign-key constraints,
+    and the system implements only the 'varchar' datatype.  All data is
+    stored in the database in string form, and we intend to keep this
+    paradigm even when we implement additional standard data types.  
+    Processor technology is such that converting to/from strings is no longer
+    an issue.
+    <P>
+    A complete list of features and limitations is outlined below:
+    <P>
+    <B>FEATURES</B>
+    <UL>
+	<LI>Native fully transactionally coherent asynchronous replication.
+	    (Native == replication is implemented natively, NOT by using
+	    triggers).
+	<LI>Fault tolerant:  Only a quorum of PEERs need to be up, automatic
+	    query restart when host-host links go up or down.
+	<LI>SNAPshots (e.g. replicated databases that can participate in
+	    read-only queries but do not participate in the quorum-based
+	    commit protocol).
+	<LI>Automatic B+Tree indexing, incremental on-demand index updates
+	<LI>Case-insensitive and anchored search operators.
+	<LI>Basic query optimization - ranged index scans for inequalities
+	<LI>BEGIN/COMMIT/ROLLBACK Transactions, multi-level, fully coherent
+	    across all PEERs and SNAPshots.
+	<LI>Arbitrary JOINing
+	<LI>No limitations on meta-SQL commands in a replicated environment
+	<LI>Theoretical record-size limit of a gig.  Operational record-size
+	    limit (compiled-in), typically 32K to 1MB.
+	<LI>Streaming queries - to avoid having to buffer the complete
+	    results when making queries that might return huge amounts of
+	    data (ORDER BY not available with streaming queries).
+	<LI>Simple ORDER BY (standard string compare)
+	<LI>The replicator implements routing via a state-full spanning-tree
+	    and can adapt to any topology as well as route around link
+	    failures.  Parallel-transmission and fill is possible, but not 
+	    yet implemented (an implementation would be trivial).
+	<LI>host<->host replication links implemented via an external
+	    command (e.g. ssh)
+	<LI>Very easy maintainance when you have 3 or more peers.  As long
+	    as you maintain the quorum, you can take peers offline for
+	    maintainance without interrupting a live system.  Adding new
+	    peers and snapshots is easy, and the newly created databases
+	    will automatically synchronize from existing PEERs or SNAPshots -
+	    no priming is required.  Only PEERs are actively managed through
+	    a system table, so SNAPshots can be brought online and taken
+	    offline at a whim.
+	    make this reliable.
+	<LI>Frozen view.  Initiating a transaction freezes your view of
+	    the database.  <B>You can specify any historical timestamp
+	    when initiating a top level transaction</B>, giving you a
+	    historical view of the database at any time since its
+	    creation.  Vaccuming (during maintainance) can keep
+	    whatever amount of history you wish.
+	<LI>Free Backups.  The PEERs and SNAPshot hosts, and the append-only
+	    historical nature of the physical tables, inherently backs-up
+	    your data.
+	<LI>Opportunistic locking.  The backplane database does not use
+	    table or record locking, because such locking is nearly 
+	    impossible to do properly in a replicated environment.  Instead
+	    we use opportunistic locking.  Opportunistic locking involves
+	    generating a conflict block of modifications on each
+	    participating peer in the commit-1 phase and then rerunning 
+	    the queries to test against (1) any commits made after the
+	    freeze point by other clients or peers and (2) any conflict
+	    blocks created by other clients or peers prior to our conflict
+	    block.  The two-phase commit protocol operates over a quorum.
+	    If a quorum of replication peers return success for commit-1,
+	    then we can safely issue the commit-2.
+	    <P>
+	    This manner of locking cannot give us an 'at least one client
+	    will commit sucessfully' guarentee, but has the advantage of
+	    being infinitely fine-grained and easily distributed.  This means
+	    that it is possible for multiple clients to commit to the
+	    database simultaniously.  However, there are some serious
+	    limitations to the current implementation (see the LIMITATIONS
+	    section).
+	<LI>The backplane database has a small install and run-time footprint,
+	    even when managing large tables.  All you need to go operational
+	    is a handful of binaries and a client.
+	<LI>The replicator can manage multiple independant databases.  These
+	    databases can be located anywhere in the replication group.  A
+	    client can connect to any replicator to access any database
+	    whether or not that database is local to the client's host.
+    </TD>
+    </UL>
+    <B>LIMITATIONS</B>
+    <UL>
+	<LI>Only one datatype is implemented, 'varchar'.  In otherwords,
+	    everything is a string.
+	<LI>We do not support triggers
+	<LI>We do not support UNIQUE
+	<LI>We only support AND clauses - no parenthesis or OR.  Yet.
+	<LI>The opportunistic locking works great, but table synchronization
+	    points stall at the timestamp for any pending commit-1 (i.e.
+	    the time between the commit-1 and the commit-2), so read-write
+	    transactions do not scale as well as we would like.  There are
+	    solutions to this problem possible using the architecture and
+	    technology we have developed, but we have not yet implemented
+	    them.  Note that opportunistic locking only occurs between the
+	    commit-1 and commit-2 states.  No opportunistic locking is
+	    necessary or required for the query portion of the transaction,
+	    and that is the portion that usually eats all the time.
+	<LI>We need to work on crash-recovery.  Due to the append-only
+	    nature of the physical files and the background synchronization,
+	    the database is quite tolerant of crashes.  But we cannot yet
+	    *guarentee* complete recovery.
+	<LI>We currently do not do any query-caching.  Our technology is
+	    actually quite-well suited to query-caching oweing to its 
+	    historical/freeze-point nature.  We can theoretically do
+	    query-caching at the client level (rather then at the 
+	    replicator or databse-core level), or we can do it on
+	    <I>leaf replicators</I> (replicators which do not host any
+	    databases at all but serve simply as a connection point for
+	    clients).  In order to do this properly, however, we want to
+	    implement triggers first.  That said, the current implementation
+	    is no clutz at running queries.
+    </UL>
+    <P>
+</UL>
+
+<P><H2><B>(II) The Physical Database Structure</B></H2>
+<UL>
+    <P>
+    The physical database structure consists of one physical file per schema.
+    Each physical file may contain several tables (all the tables belonging
+    to that schema, typically).  Physical files are laid out in an
+    append-only manner.  There are no seek-backs except to
+    the header (to update things like the known append point, highest
+    timestamp, and so forth... nothing that isn't recoverable).
+    Each record is variable length and contains only those columns that
+    are non-NULL.
+    <P>
+    Each record is tagged with a 16 bit <B>Virtual Table Id</B> (allowing
+    several different SQL tables to share the same physical file), and each
+    column is tagged with a 16 bit <B>Virtual Column Id</B>.  Column data
+    is arbitrary and tagged with an 8, 16, or 32 bit length field.
+    There are no record-size limitations in the record-format itself, but
+    there is a larger blocking factor imposed to make crash recovery easier
+    and this does limit the size of any given record.
+    <P>
+    High level SQL queries based on schema, table, and column names are
+    converted to low level physical queries by converting those identifiers
+    into <B>VTableId</B>'s and <B>ColId</B>'s.  The SYS schema contains
+    a number of tables to translate high level names into low level 
+    identifiers.  <B>SYS.TABLES</B> translates (schemaname, tablename)
+    into (physicalfilename, tablevid).  Every table you create has a 
+    special column table associated with it at <B>(TableVId + 1).</B>
+    This table is used to convert column names to column id's.
+    Because conversions are stored as SQL tables,
+    high level SQL commands such as <B>CREATE TABLE</B> are actually
+    implemented as simpler low-level SQL commands in sub-transactions
+    which simply manipulate the lookup tables.  This allows us to 
+    implement virtually all high level SQL commands, including the 
+    <B>ALTER</B> commands, using low level SQL.  The database core itself
+    only needs to implement <B>SELECT</B>, <B>INSERT</B>, <B>DELETE</B>,
+    and <B>UPDATE</B>.  Table and column dropping is implemented by
+    marking the associated virtual table and column id's as being
+    deleted, but not actually deleting the association.  This historical
+    queries will work even in the face of table alterations (they will see
+    an 'older' version of the table).
+    <P>
+    This has the side effect of making the entire SQL command set operate
+    in a replicated environment natively, even though the replication code
+    only really understands physical records and synchronization timestamps.
+    <P>
+    The append-only nature of the physical file should be particularly
+    noted.  In order to implement <B>DELETE</B>, a specially-flagged
+    complete copy of the original record must be appended in order to 'delete'
+    the original record.  
+    <B>UPDATE</B> is implemented by appending a deletion record and 
+    then appending the updated record, resulting in two appends.
+    The indexer/scanner is responsible for matching up deletions with
+    their original records and filtering both out of any query response.  
+    The indexer in particular is well suited to optimize deletions so
+    the only real tradeoff is in space overhead.  The advantages, however,
+    are innumerable.  The append-only nature of the database makes
+    replication and synchronization utterly trivial and also reduces
+    the complexity of nearly every major implementation point for the
+    database core, including opportunistic locking and conflict resolution.
+    This is important because the commit and conflict resolution protocols
+    are already extremely complex.
+</UL>
+
+<P><H2><B>(III) Physical Database Operations</B></H2>
+<UL>
+    <P>
+    <B>Queries</B> - basic <B>SELECT</B>, <B>INSERT</B>, <B>UPDATE</B>, 
+    and <B>DELETE</B> queries are supported on the physical database.
+    Higher level queries are implemented in a macro-like fashion using 
+    low level queries in sub transactions.  In fact, even <B>INSERT</B>
+    and <B>UPDATE</B> themselves are implemented as subtransactions
+    in order to perform appropriate guard queries to check for things
+    like duplicate keys).  The physical <B>UPDATE</B> operation is, in fact,
+    implemented as a DELETE/INSERT combination.
+    <P>
+    <B>Transactions</B> - Transactions are supported natively by the
+    physical database.  When a transaction is pushed the client is 
+    given a frozen view of the database regardless of appends made by other
+    clients during the transaction.  Any modifications made during the
+    transaction occur in temporary tables.  A two-phase commit protocol
+    with simple opportunistic locking and a more complex conflict table
+    scheme is implemented within the domain of a single host 
+    (multiple processes accessing the same physical database), and this
+    core technology is extended by the replicator to span multiple hosts.
+    Commit sequencing is explained in its own chapter.
+    <P>
+    <B>Indexing</B> - indexes are directly implemented on physical files
+    and only understand virtual tables and physical records.  Indexes
+    have no concept of 'SQL' except in the query-optimization phase.
+    Indexes are implemented on any indexable WHERE clause.  The Backplane
+    database currently implements B+Tree indexes.  B+Tree indexes are
+    implement on physical files and on temporary tables used within a
+    transaction.  <B>Indexes do not have to be updated in lockstep with
+    the data tables being indexed.  The database will simply scan unindexed
+    records sequentially (we call this indexing SLOP).  This means that
+    many small, complete transactions may occur without any physical index
+    file or index-related log updates occuring, greatly reducing log and
+    synchronization overheads for a commit.</B>
+    <P>
+    <B>Vaccuming</B> - a physical database can be vaccumed.  Vaccuming
+    cleans out deleted records in a physical database by removing the
+    deletions older then a certain date.  Vaccuming rewrites the physical
+    file and may also optimize the ordering of the records (though it 
+    doesn't currently reorder records).  A host's database is exclusively
+    locked while being vacuumed which effectively means it must be taken down.
+    Your database will still be actively useable by clients as long as you 
+    have a quorum, however.  When the vacuuming process is complete and
+    the database is brought back online, the host will catch up again.  
+    Since no queueing is involved, you will not run out of 
+    resources if you take a host offline for an extended period of time.
+    If vacuuming on a regular basis, you should arrange the hosts in
+    the replication group to vaccum any given database at different
+    times in order to keep the database operational.
+</UL>
+
+<P><H2><B>(IV) Replication Operation - TimeStamps</B></H2>
+<UL>
+    <P>
+    It should first be noted that we make a distinction between
+    <B>Synchronization</B> and a <B>Distributed Query</B>, also known
+    as a <B>Replicated Query</B>.  The two-phase commit protocol used
+    by the replicator occurs within a <B>Distributed Query</B>. 
+    Synchronization of physical records between databases is completely
+    unrelated.  Synchronization is implemented as a constantly running
+    background process.  A replicated query doing a commit
+    only needs to deal with a quorum of hosts, <B>even if more hosts are
+    available a replicated query doing a commit is considered to be
+    complete the moment it gets a quorum.  Any quorum.</B>  The synchronizer
+    is responsible for updating any hosts that wind up not being part
+    of the replicated query and is also responsible for synchronizing
+    hosts which lose contact with the network, or go down for a period of
+    time, and for new 'empty' hosts which are added to the replication
+    group.
+    <P>
+    Synchronization is implemented by copying physical records between two
+    timestamp ranges.  There is very little SQL involved.  A replicated
+    query by contrast operates across a quorum of hosts at the SQL query
+    level and must implement the more sophisticated opportunistic locking
+    and conflict resolution algorithms.  A read-only transaction doesn't
+    even need a quorum.. it only needs to locate a single host which is
+    sufficiently up-to-date to guarentee transaction consistency. 
+    <P>
+    The core of the database replication algorithm is the notion of 
+    <B>Freeze Points</B>, <B>Mininum Commit Points</B>, and
+    <B>Synchronization Points</B>.  These points are 64 bit 
+    timestamp/sequence-numbers that have a monotonically increasing property.
+    The synchronization timestamp of a database is the point at which
+    the database has guarenteed synchronization to the quorum.
+    That is, any query <B>Q</B> specifying a freeze point less then or
+    equal to the synchronization point of a database instance on some
+    host <B>H</B> can use host <B>H</B> in all of its selections.  If doing
+    a read-only query then a single host meeting this criterea can satisfy
+    the entire query.
+    <P>
+    When a client initiates a transaction, it must select a
+    <B>Freeze Point</B>.  The client's view of the database will be frozen
+    at the specified freeze point.  It will see only the frozen view plus any
+    modifications it makes within its own transaction.  Only one host in the
+    replication group is required to initiate such a transaction, as long as
+    that host's synchronization time stamp exceeds the selected freeze point.
+    <P>
+    When a read-write transaction attempts to commit, a two-phase
+    commit protocol must be used across at least a quorum of peers
+    in order for the commit to be accepted.  All queries leading up to
+    the commit must also be issued on each potential peer since these
+    queries act as guards for conflict detection.  The client will issue a
+    <B>COMMIT PHASE 1</B> to at least a quorum of hosts.  If the quorum
+    all return success, the client may issue <B>COMMIT PHASE 2</B>.  The
+    phase-1 commit will test the queries made by the client during the
+    transaction against successful commits made to the databases after the
+    freeze point on at least a quorum of hosts.  We have to use a quorum
+    here rather then a single host because our commit time stamp is for
+    obvious reasons going to be larger then the synchronization time stamp
+    of any of the hosts.  Every host's database is perpetually out of
+    sync and thus may have different syncnhronization timestamps.
+    The COMMIT1 conflict
+    test must be made on at least a quorum of hosts to ensure that there
+    are in fact no conflicts.  Since any other commit made by any other
+    client also operates on a quorum, there will be at least one overlapping
+    host for commits made by any two clients.  We are guarenteed consistency
+    no matter how out of sync the databases might be with each other.
+    <P>
+    <B>The synchronization time stamp for the database on any given host is
+    not updated when a phase-2 commit is issued!.  There may be other
+    commits in-progress with smaller potential-commit time stamps or there
+    may be records committed to one quorum of hosts which have not yet
+    been synchronized to other hosts.  See the next section
+    for an explanation of how the synchronization time stamp is updated.</B>
+    <P>
+    <B>If a client is doing back-to-back transactions it must specify the
+    commit time stamp of the previous transaction as the freeze
+    timestamp for the following transaction in order to maintain 
+    transactional consistency between the transactions.  Otherwise a client
+    may not 'see' the data it committed in the previous transaction in the
+    following one, or it may conflict with its own previous commit when
+    it tries to commit the new transaction.  This can create a performance
+    issue!</B>  Back-to-back transactions that must chain a commit
+    timestamp are non-optimal in regards to performance, especially 
+    back-to-back read-modify-write transactions (since the second 
+    transaction must wait for a quorum to completely synchronize to
+    the previous transaction's commit time stamp before it may start
+    operations).   Note that back-to-back transaction consistency
+    has nothing to do with conflict resolution.  If you do one
+    read-modify-write transaction and then do another that is dependant
+    on the first one's results without specifying a new freeze timestamp,
+    the two-phase commit protocol will cause the second transaction's
+    commit to fail due to its conflict with the first transaction.  The
+    replicator has no real notion of 'client consistency', only 'timestamp
+    based consistency'.
+    <P>
+    Back-to-back transactions, while not optimal, are also not terrible.
+    If you are doing a non-dependant transaction
+    your second transaction can start running its queries the moment
+    a single host in the replication group is sufficiently synchronized.
+    Only the commit at the end of the transaction will stall until at least
+    a quorum of hosts are sufficiently synchronized.  We get the
+    advantage of some degree of overlapping operation and the delay
+    is typically fairly small.  Also, the quorum requirement for the 
+    commit protocol itself is robust.  If there are 5 peers the query may
+    proceed the moment a quorum (3) of those peers have responded, even
+    if the other two peers are still chomping on the data.  <B>The result is
+    that the quickest peers in your replication group can terminate a
+    transaction, and peers degraded by RAID rebuilds, failing disks, or
+    failing networks will not impact operation.</B>
+    <P>
+</UL>
+
+<P><H2><B>(V) Replication Operation - Synchronization</B></H2>
+<UL>
+    <P>
+    In order for a database to be able to update its synchronization time
+    stamp (<B>SyncTs</B>), it must synchronize to the <B>Minimum Commit
+    TimeStamp</B> of at least a quorum of hosts in the replication group.
+    Each host maintains its own idea of the <B>MinCTs</B>.  This is 
+    the timestamp prior to which a host guarentees that no new commits
+    timestamps will be issued by that host.  <B>Note that this does not
+    count records that may be copied from other hosts through the
+    synchronization process itself.</B>  That's why a quorum is needed to
+    update the synchronization timestamp.  The <B>MinCTs</B> reported by
+    a host may be slightly lower then the <B>MinCTs</B> that host assigns
+    to a new transaction at commit time due to there being other
+    in-progress commits.   Any given host cannot report a <B>MinCTs</B>
+    less then it has assigned to any outstanding commit operation.
+    <P>
+    In order to synchronize, host X requests all records between its current
+    synchronization point and the <B>MinCTs</B> of host Y, iterating through
+    at least a quorum of hosts.  Each host supplies a list of physical records
+    which the synchronizer merges into its own physical database.  Once
+    host X has merged the data from at least a quorum of hosts, it may 
+    update its <B>SyncTs</B> (synchronization time stamp) to the lowest
+    <B>MinCTs</B> it encountered in that quorum.  The host may, of course,
+    choose the quorum of other hosts with the highest available
+    <B>MinCTs</B>'s.  This way, adding a new host to the replication
+    group (the new host will have a very low SyncTs for a very long time)
+    will not intefere with the ongoing synchronization process and will
+    also not intefere with client operations.  The new host simply will not
+    be able to participate in client operations until it is sufficiently
+    synchronized.
+    <P>
+    Additionally, a host can always update its <B>SyncTs</B> to at least the
+    <B>SyncTs</B> of any other single host it has synchronized to, without
+    needing a quorum.  This occurs most often when you
+    bring up a new replication
+    host and it must snarf down the entire contents of the database.  It
+    does not need to snarf the entire contents from a quorum of hosts, only
+    from a single host.  Under normal conditions, however, the quorum
+    mode operation is
+    what occurs because none of the replication hosts will be synced up
+    to the most recently committed data (committing a transaction does
+    not and cannot legally adjust the sync point in of itself). 
+    This same situation, in fact, is a degenerate case
+    of the situation that occurs when you lose your quorum (due to network
+    outages or taking down too many hosts) and then regain it again.  At
+    that point there is no one host with 'all' the data and a quorum of
+    machines must synchronize with each other before any of them can update
+    their <B>SyncTs</B>.
+    <P>
+    Not being completely synchronized does not imply a stall.  In a heavily
+    loaded system all the hosts are in a constant state of
+    non-synchronization.  All that matters is that you be synchronized 
+    sufficiently to be able to start and then later commit a particular
+    transaction.  Dependant back-to-back transactions may stall, but
+    independant transactions will parallelize just fine.   The only thing
+    that counts when trying to find a suitable machine or machines is the
+    <B>Freeze Point</B> the transactions asked for when it began.
+    <P>
+    The Backplane synchronizer runs continuously and asynchronously.  Do
+    not confuse this asynchronous operation with the concept of Async-push.
+    Backplane's DRDBMS uses a quorum-based two-phase quorum-only commit
+    model to guarentee transactional consistency.
+</UL>
+
+<P><H2><B>(VI) Replication Operation - Choosing the Commit TimeStamp</B></H2>
+<UL>
+    <P>
+    A single timestamp is associated with all new records in a commit.  
+    The chosen commit timestamp must be greater then the highest 
+    synchronization point of any host in the replication group (not just
+    a quorum).  To guarentee this the <B>MinCTs</B> and <B>SyncTs</B>
+    calculations must be very carefully arranged.  By only updating the
+    <B>SyncTs</B> to be the lowest MinCTs found in a quorum, and only
+    choosing a commit time stamps that is the highest MinCTs found in a
+    quorum, thene due to the fact that two different quorums intersect on at
+    least one host our chosen commit time stamp will always be greater
+    then the greatest synchronization time stamp in the replication
+    group.
+    <P>
+    So choosing a commit timestamp is relatively easy.  But we have a
+    problem when several clients try to commit simultaniously.  We do
+    not care about the ordering of the timestamps chosen by those
+    clients, but we must ensure that the clients do not wind up choosing
+    the same one or we will not be able to do deadlock resolution!  In order
+    to resolve this we assign a unique small integer host identifier to
+    each PEER in the replication group.  Only PEERs require this
+    identifier, SNAPSHOT hosts do not.  This identifier is stored 
+    in the <B>sys.repgroup</B> table and is embedded in any <B>MinCTs</B>
+    timestamp allocated by a host.  Thus we guarentee that no two hosts
+    will ever return the same commit timestamp candidate.
+</UL>
+
+<P><H2><B>(VII) Replication Operation - Deadlock Resolution</B></H2>
+<UL>
+    <P>
+    At the moment the Backplace database can only do conflict detection.
+    A conflict due to a deadlock is still detected, but we cannot reorder
+    the commit to allow at least one of the transactions to complete.
+    Instead, at the moment, both commits will fail and the clients must
+    retry.
+    <P>
+    A deadlock can occur when several clients issue conflicting commits
+    in conflicting orders across the quorum.
+    This does not occur in the single-host situation but can occur in a
+    replicated environment.  If several clients are attempting to issue a
+    phase-1 commit to, say, three different hosts A, B, and C, it is possible
+    for one of the clients to get in 'first' on A, for another client to
+    get in first on B, and a third to get in first on C.  Since the 
+    (opportunistic) locking is first-come first-serve, a deadlock may
+    occur preventing any client from being able to obtain a quorum.
+    <P>
+    Even though we do not use hard locks, the opportunistic locking we do
+    use has the same problem.  What will occur is that the conflict slots
+    for the commit-1 operations of N competing clients will be allocated 
+    in different orders on different hosts.  The result is that some of
+    the commit-1 attempts will fail and, if no quorum can be achieved,
+    this will cause the deadlocked transaction(s) to fail.  In an optimal
+    world we would want at least one of the deadlocked transactions to
+    succeed, but at the moment both will fail.
+</UL>
+
+<P><H2><B>(VIII) Native Synchronization - Use of Guard Queries</B></H2>
+<UL>
+    <P>
+    In order to be able to synchronize what are effectively physical
+    records, all meta-SQL operations (such as <B>CREATE TABLE</B>) execute
+    internal guard queries to force a conflict to occur across a wider
+    set of records in order to guarentee that the same virtual table and
+    virtual column identifiers are chosen for meta-sql operations.
+    For example, <B>CREATE TABLE</B> will internally do a <B>SELECT * FROM
+    SYS.TABLES</B> command in order to force serialization of the create
+    table command, thus guarding against some other client creating another
+    table with the same virtual table id.
+    <P>
+    In the same manner, <B>INSERT</B> and <B>UPDATE</B> queries issue
+    internal <B>SELECT</B>'s not only as a test for duplicate primary keys,
+    but also to guard against conflicting commits made by other clients.
+    <P>
+    Guard queries allow us to implement synchronization of high-level
+    SQL commands simply by copying physical records.  That is, without
+    introducing any special cases.
+</UL>
+
+<P><H2><B>(IX) Replication Operation - Robustness & Query Restarts</B></H2>
+<UL>
+    <P>
+    The replicator is designed for extreme robustness.  We separate out
+    database synchronization in order to allow it to operate independantly
+    of the query protocol, which allows queries to be initiated as soon
+    as at least one host's synchronization time stamp reaches the freeze
+    point requested on transaction initiation, and allows a read-write
+    transaction to complete as soon as a quorum of hosts respond to 
+    the 2-phase commit protocol, even if other hosts are available.  <B>What
+    this means is that the protocol automatically adapts when a host goes
+    down or becomes a sludgepile without going down</B>.  We always 
+    issue our phase-1/2 commit to all available hosts, but we consider
+    the operation done as soon as a quorum responds.  Once we have a quorum
+    the other hosts can crash and burn and we don't care.
+    <P>
+    We usually select one host to generate the results of a SELECT, even
+    though all hosts (or at least a quorum of hosts) must run the query
+    in order to be able to do a commit.  If a READ-ONLY transaction
+    is issued we only need to communicate with one host, period.  If this
+    host goes down the protocol will automatically restart the query on
+    another host.  <B>The query protocol is able to deal with most failure
+    cases transparently.  Enough that web server operations can simply
+    assume that the database is always up and running.</B>
+    <P>
+    Despite the fact that we are using a two-phase quorum-based model, it
+    is still possible in very rare situations for a replicated database to
+    become inconsistent.   This can only occur if a phase-2 commit has
+    been issued and enough systems (or the network) go down simultaniously
+    such that a quorum of hosts did NOT get the phase-2 commit message.
+    In most cases where this occurs the hosts will be able to resynchronize
+    with each other the moment they come back up.  However, if you commit
+    a new transaction that conflicts with the one that suffered the phase-2
+    commit glitch and this new transaction chooses a quorum of machines in
+    which NONE of the quorum saw the previous transaction, the new transaction
+    may be committed and result in an inconsistency.  <B>This case is very
+    rare and even if it does occur all replicated hosts will still synchronize
+    to the same inconsistent state, so the worse that can happen is that 
+    the data view will be glitched.  This is bad enough in of itself, but
+    believe me things would be much, much worse if some of the replication
+    hosts actually became inconsistent with their peers!.</B>
+    <P>
+    It is possible to detect this sort of failure during the synchronization
+    process, and we intended to do just that in future work.
+</UL>
+
+<P><H2><B>(X) Replication Operation - Losing the Conflict Window</B></H2>
+<UL>
+    <P>
+    The conflict slot for a transaction is only active after a commit-1 is
+    acknowleged.  If you initiate a large number of commit-1's, achieve
+    a quorum (but still have more commit-1's pending), and then initiate
+    commit-2's on that quorum, there is an issue with the remaining
+    commit-1's for which you have yet to receive an acknowlegement.  You
+    can't be sure that the data committed by the commit-2 you issued to
+    the quorum has not already been replicted to some other host BEFORE
+    that host managed to execute the commit-1 for the same transaction.
+    Oops.
+    The result is that duplicate data can wind up in the database, 
+    corrupting it.
+    <P>
+    This situation can actually occur quite often in the Backplane system,
+    because the query protocol is allowed to get 'behind' on some hosts
+    as long as there are a sufficient number of other hosts to guarentee
+    the quorum.  When the queries catch up, it might already be too late.
+    <P>
+    In order to avoid this situation we cannot ever issue a commit-2 for
+    a query whos commit-1 acknowledgement was not received from a host
+    before we began the commit-2 sequence after having gotten a quorum.
+    Instead we must abort the commit-1.  Furthermore if we have initiated
+    a commit-2 we not only must abort commit-1's which are in progress
+    but not yet acknowleged, we cannot allow any NEW commit-1's to be issued
+    for hosts playing catch-up.  
+    <P>
+    Avoiding this situation also requires a slight modification to the
+    background synchronization process.  A host X cannot synchronize
+    from another host Y beyond the lowest pending minimum commit timestamp
+    for commit-1's pending on host X.  Otherwise it might potentially
+    synchronize data from a commit-2 made to host Y and then write out
+    duplicate records when the commit-2 is made to it (X) for the same
+    transaction.
+    <P>
+    Handling this case properly allows us to run queries on more then
+    just a quorum of hosts, adding redudancy and reliability to the
+    system.
+</UL>
+
+<P><H2><B>(XI) Replication Operation - Avoiding the 3-phase commit</B></H2>
+<UL>
+    <P>
+    It is possible for the replicator to get into the situation where,
+    for a particular transaction, it issues a phase-2 commit to a quorum
+    of 'fast' peers before it is able to issue a phase-1 commit to a
+    'slow' peer.  The phase-1 commit guards peers from a synchronization
+    conflict with the transaction being committed.  That is, it prevents
+    a peer from synchronizing a record from some other peer for a
+    transaction that is still being run on the first peer.  <B>When this
+    situation occurs, the replicator must issue an ABORT for any peers outside
+    the quorum which had not responded to its commit-1 message prior to
+    the issuance of the commit-2.</B>  This prevents the possibility of
+    the slow peer generating a duplicate record in its physical tables.
+</UL>
+
+<P><H2><B>(XII) General Notes on Scaleability</B></H2>
+<UL>
+    <P>
+    The best, cheapest, and most reliable way to scale a database is
+    by distributing it across a lot of medium sized machines.  The
+    concept of <I>Big-Iron</I>, while definitely not dead, makes no
+    sense for any but the largest of projects - multi-terrabyte or
+    larger datastores.  And even those could be distributed.
+    <P>
+    Distributing a database can be done by breadth and by depth.  By
+    breadth I mean distributing different pieces of a database across
+    a large number of machines, for example where machine #1 might
+    have all the A-M's in the address book and machine #2 might have
+    the N-Z's.  By depth I mean distributing complete copies of
+    the database across multiple machines, where you might have two
+    machines both with A-M and another two both with N-Z.  When we
+    talk about replication configurations we do it in terms of X-by-Y.
+    A 3-by-4 database replicates each element of the database in three
+    different places and splits the database into four regions, requiring
+    12 machines to implement.
+    <P>
+    Backplane currently implements the depth part but not the width.
+    However, each customer is broken out into their own database so we
+    do in fact get scaleability width-wise by choosing which hosts
+    replicate which databases.  Even though we do not distribute
+    the database in pieces, we still get a reasonable performance multiple
+    in that most of the queries we do are read-only and thus require only
+    a single host, allowing queries from many clients to be efficiently 
+    distributed over all available hosts in the replication group.
+    <P>
+    Read-only transactions are trivial to scale since only one host
+    need be involved.  Read-write transactions are considerably more
+    difficult to scale.  Read-write transactions scale best when they
+    are non-conflicting.  The Backplane database is able to do an
+    arbitrary number of simultanious non-conflicting commits to the
+    same database, though some limit is desireable for performance reasons.
+    Conflicting Read-write transactions scale the worse, generally requiring
+    at least a quorum of hosts to synchronize to the prior transaction's
+    commit timestamp before the following transaction can even be initiated.
+</UL>
+<P><H2><B>(XIII) Data Integrity During Commit Phase 2</B></H2>
+<UL>
+    <P>
+    Individual hosts need to ensure the integrity of their copy of the
+    database.  A single corrupt database in the cluster can lead to 
+    odd occurances of bad data returned by queries.
+    <P>
+    The Backplane database implements a log file to hold BTree and data
+    table update information.  Since the Backplane database is effectively
+    append-only (except for a header field containing the current append
+    offset for the database), we can safely write table data out to the
+    table files without any ordering constraints.  Until the header is
+    updated the Backplane database will not 'see' the information
+    written if a crash / restart occurs.  There are several choices in regards
+    to logging:
+    <UL>
+	<P>
+	First, you can choose to have the data being written to
+	the table files also written to the log file.  The append offsets
+	will be written to the log files as well and the log file will
+	be synchronized.  The table file headers will then be updated but
+	no further synchronization is required.  The advantage of this
+	is that, typically, only a single fsync() is required to accomplish
+	the commit.  Another advantage is that you can reconstruct the entire
+	database and its indexes from scratch just from the log file.
+	The disadvantage is that the log file may grow to be quite large.
+	<P>
+	Second, you can choose to have only the new table append offsets
+	written to the log file.  This requires two fsync's because the
+	database must fsync the data it appended to the table files before
+	it can write to and fsync the log containing the new append offsets.
+	<P>
+	Third, you can choose a hybrid of the two.  The first methodology
+	will be used for small transactions (e.g. less then 8K worth of
+	data being committed) while hte second methodology will be used
+	for larger transactions.  The two methodologies can be mixed and
+	matched though, of course, you cannot recover the entire database
+	from just the log file.
+    </UL>
+    <P>
+    The Backplane, Inc. database must also update BTree indexes in a safe
+    manner.  Databases can grow to huge sizes and being forced to reconstruct
+    an index after a crash can be time consuming to say the least.  There
+    are several options:
+    <UL>
+	<P>
+	First, you can update an index file in place.  An invalidation
+	record will be written and fsync'd to the log for the index.
+	At some later point the replicator will fsync the index and write
+	(but not fsync) a validation record to the log.  This is actually
+	a fairly good option to use if you have fairly small (100MB or less)
+	databases because index files are not normally updated on every
+	transaction anyway, but if a crash occurs while the index is marked
+	invalid in the log the index will have to be rebuilt from scratch
+	when the database starts up again.
+	<P>
+	Second, you can include all index file updates in the log file.
+	With this option index-file-related records will be written to
+	the log file, fsync'd, then the index file(s) will be updated
+	but not fsync'd.  Advantage include (A) Only a single fsync()
+	is required, and (B) The index file can be reconstructed after a
+	crash without having to rebuild it from the data files.  The
+	disadvantage is that you may end up writing a considerable amount
+	of data to the log file.
+	<P>
+	Third, the same hybrid approach used for table files can be taken.
+    </UL>
+    <P>
+    Since index files do not have to be synchronized with table data the
+    log file operations related to an index should not effect overall
+    performance.  Furthermore, the database can combine index log file
+    operations related to a prior commit with table file log file 
+    operations related to the next commit, allowing the whole mess to
+    go in with a single fsync().
+</UL>
+<P><H2><B>(XIV) Backing up the Data</B></H2>
+<UL>
+    <P>
+    The supreme advantage of having an append-only physical file format
+    is that there is very little chance of a database operation corrupting
+    historical data.  The supreme advantage of keeping historical data
+    around is that it gives you the ability to undo a major screwup to
+    the very moment the screwup occured, not just to the current hour or
+    the current day that traditional backups offer.  Most importantly,
+    the data is <B><I>Replicated</I></B>.  The database is natively able
+    to manage its own off-site backups.  If you are truely paranoid you can,
+    as a further safety measure, setup a SNAPSHOT host (or several).   A
+    SNAPHOST host operates like a peer except it only does synchronization
+    (in realtime I might add) and read-only queries.  It cannot participate
+    in a quorum or a read-write query and thus never exercises the most
+    complex bits of the database core code.  This plus the append-only
+    nature of the database makes a SNAPSHOT host the perfect way to backup
+    your database.
+    <P>
+    The append-only nature of the database also makes it utterly trivial
+    to do incremental 'hard' backups to offline storage.  I did say at
+    the beginning of this paper that using an append-only model offered
+    benefits to virtually every part of the system!  One of our goals
+    is to eventually eliminate the minor header updates we currently do to
+    physical table files... to make them truely append-only.
+</UL>
+<P><H2><B>(XV) Maintainance</B></H2>
+<UL>
+    <P>
+    The database is designed to allow general maintainance to occur without
+    having to take the database down.  Maintainance functions are summarized
+    as follows:
+    <UL>
+	<P><B>Create SNAPshot database</B> - Create a database on a particular
+	host and add it to the replication group as a snapshot.  Once added,
+	the database will automatically synchronize to its peers.
+	<P><B>Create PEER database</B> - Create a database on a particular
+	host and add it to the replication group as a peer.  Once added,
+	the database will automatically synchronize to its peers.
+	<P><B>Take a database offline</B> - Remove a database from the
+	consideration of the replication group.
+	<P><B>Take a database online </B> - Make a database available to the
+	replication group.
+	<P><B>Downgrade a database</B> - Downgrade a PEER into a SNAPshot.
+	The database in question must first be taken offline, then downgraded
+	(the downgrading actually updates the remaining PEERs), then brought
+	online again.
+	<P><B>Emergency downgrade</B> - Downgrade one or more PEERs into
+	SNAPshot hosts when a quorum is not available.  The databases
+	in question must first be taken offline or otherwise be offline
+	(i.e. they could be crashed).  A single PEER will be updated directly,
+	without using the standard quorum based commit protocol, and the
+	update will propogate via the synchronization to remaining peers.
+	<P><B>Upgrade a database</B> - Upgrade a SNAPshot into a PEER.
+	The database in question must first be taken offline, then upgraded
+	(the upgrading actually updates the PEERs, not the database itself),
+	then brought online again.
+	<P><B>Destroy a database</B> - Destroy a database, deleting it from
+	a host.  The database must be offline at the time and downgraded
+	into a SNAPshot first.  You can then wipe the database.
+    </UL>
+    <P>
+</UL>
+<P><H2><B>(XVI) Conclusion</B></H2>
+<UL>
+    <P>
+    We at Backplane, and myself particularly, have embarked and completed
+    our core-database project in order to guarentee the scaleability
+    and manageability of our business and, as a consequence, to produce an
+    extremely reliable operation from our customer's point of view.  A
+    billing system cannot afford to have glitches.
+    <P>
+    By spending resources on the database core we save resources in
+    virtually all other aspects of building our business, including all
+    the programming that gets layered on top of the database.  Frankly,
+    too many of the most popular commercial databases utilize a kitchen-sink
+    approach that results in bloated code, high overhead, and high 
+    maintainance costs, and for some reason unknown to me appear to not 
+    even implement basic core features that I consider to be absolutely
+    necessary to a database.   There are some features which we will be
+    adding to the Backplane database at some point in the future --- SQL
+    Procedures and Triggers are useful gizmos, but not having them does
+    not prevent one from being able to build a reliable turnkey ASP
+    billing solution whereas not having real quorum-based replication might.
+    It's really that simple.
+    <P>
+</UL>
+</BODY>
+</HTML>

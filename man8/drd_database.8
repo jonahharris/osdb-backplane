@@ -1,0 +1,58 @@
+.\" $Backplane: rdbms/man8/drd_database.8,v 1.1 2002/03/20 03:58:36 dillon Exp $
+.\"
+.Dd March 18, 2002
+.Dt DRD_DATABASE 8
+.Os
+.Sh NAME
+.Nm drd_database
+.Nd Database engine process (started by replicator)
+.Sh SYNOPSIS
+.Nm
+.Op Fl D Ar dbdir
+.Op Fl f Ar filedes
+.Op Fl q
+.Op Fl v
+.Ar database
+.Sh DESCRIPTION
+.Pp
+.Nm
+is the core database engine packaged using a client-server protocol similar
+to that used between
+.Nm rsql
+and the
+.Nm replicator .
+The replicator fork/exec's
+.Nm
+when attaching a database and then forwards database requests to the
+engine for execution.
+The following options are available:
+.Bl -tag -width indent
+.It Fl D Ar dbdir
+Specify the master directory.
+.Nm
+will locate the requested database within this directory.
+If not specified, the RDBMS_DIR environment variable is used. 
+The directory is typically something like
+.Pa /usr/local/backplane/drdbmsA .
+.It Fl f Ar filedes
+The replicator creates a pipe and passed the rendezvous descriptor to
+.Nm
+using this option.  client/server operations then proceed via the 
+descriptor.
+.It Fl q
+Be more quiet on stderr
+.It Fl v
+Be more verbose on stderr
+.It Ar database
+The physical database (under the master directory) that the core engine
+operates on.
+El
+.Pp
+.Sh EXAMPLES
+.Sh ENVIRONMENT
+.Sh SEE ALSO
+.Xr ddump 1
+.Sh HISTORY
+The
+.Nm
+command first appeared in version 1.0

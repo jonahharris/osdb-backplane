@@ -1,0 +1,31 @@
+#!/bin/tcsh
+
+dsql -e test << EOF
+
+begin;
+
+create schema lang;
+create table lang.english ( tag varchar, name varchar );
+create table lang.spanish ( tag varchar, name varchar );
+
+LOAD INSERT INTO lang.english ( tag, name )
+{
+    VALUES ( '1', 'one' );
+    VALUES ( '2', 'two' );
+    VALUES ( '3', 'three' );
+}
+
+LOAD INSERT INTO lang.spanish ( tag, name )
+{
+    VALUES ( '2', 'dos' );
+    VALUES ( '3', 'tres' );
+    VALUES ( '4', 'cuatro' );
+}
+
+SELECT e.tag, e.name, s.tag, s.name FROM lang.english=e, lang.spanish=s;
+
+SELECT e.tag, e.name, s.tag, s.name FROM lang.english=e, lang.spanish=s WHERE e.tag = s.tag;
+
+rollback;
+
+EOF

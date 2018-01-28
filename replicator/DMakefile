@@ -1,0 +1,26 @@
+# DMakefile
+#
+# $Backplane: rdbms/replicator/DMakefile,v 1.17 2003/05/09 16:42:57 dillon Exp $
+
+MODULE= replicator
+.ifos linux
+EXTRALIBS= crypt
+.endif
+.ifos darwin
+EXTRALIBS= crypto
+.endif
+EXTRALIBS ?= crypto md
+SRCS= main.c dbmanage.c sysctl.c globals.c link.c dbinfo.c hello.c pkt.c \
+	replicate.c client.c vcinstance.c vcmanager.c status.c \
+	synchronize.c linkmaint.c linkenable.c
+
+all:	_exe
+
+clean:	_cleanexe
+
+depend:	_dependexe
+
+install:	_installexe
+
+.include ../DMakefile.inc
+

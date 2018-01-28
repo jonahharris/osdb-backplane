@@ -1,0 +1,134 @@
+
+File synchronization and logging during COMMIT-2
+
+    * Write to the physical table files without fsyncing.  Do not update
+      the physical table file(s) append offset field, just track it in
+      local structures.
+
+    * Do not update the index files.  Add code to the BTree scanner
+      to detect the non-updated state and scan the extra records
+      sequentially from the table itself (if necessary, this may already
+      exist?).
+
+    (A crash or failure will result in the entire transaction being lost)
+
+    * When convenient (possibly just after finishing the table writes if
+      we are in single-peer safe mode), fsync the table files, update
+      their append points (but do not fsync the append points unless in
+      super-safe mode).
+
+    * When convenient, after a number of new records have built up, 
+      update the indexes.  Index updating involves scanning the table,
+      updating the index, fsync()ing the index, and then updating the
+      index table tracking offset.
+
+      Adjust the indexing code to detect and ignore entries it may have
+      already scanned, allowing the index table tracking offset to be
+      written without fsync()ing.
+
+      XXX make the database code work with non-updated indexes!!!!  For
+      small transactions we can achieve a far higher transaction rate
+      if we only update the index when more then X kilobytes worth of
+      records have accumulated.
+
+      XXX btreeInsert()/IndexWrite()/Append code needs to be made safer.
+
+XXX update/clone/insert - on failure we have to undo all [deletion+]insertions
+
+
+
+
+When selecting with WHERE's on raw columns, for anything other then
+HISTORY (i.e. anything where QF_RETURN_ALL is not set), we cannot optimize
+the btree algorithm (for example) for the top side of any range.  Otherwise
+the restricted range might remove a deletion that cause a deleted record
+to be returned as good.
+
+
+Make select on raw columns work, and make sure they use the correct
+ROP since normal ops are case-insensitive (which breaks binary data)
+
+SELECT d.cid, c.company, c.firstname, c.lastname, c.email FROM cust.contact=c, cust.customer=d WHERE c.contactid = '0000090011' AND c.contactid = d.primaryct;
+SELECT d.cid, c.company, c.firstname, c.lastname, c.email FROM cust.contact=c, cust.customer=d WHERE c.contactid = '0000090011' AND d.primaryct = c.contactid;
+
+	Fuckup when updating a record already updated in the push ... 
+	ta_Append is being used to terminate the scan, not ti_RanEnd.p_Ro!!
+	(but watch out for restricted indexes... we may still have to reindex)
+
+    Vaccuuming issues:
+
+	Hold read lock while referenced, exclusive lock when creating
+	(validation failure) or vaccuuming.  When vaccuuming increment
+	file generation number.
+
+	generation number to reset btree indexes (from header)
+
+    BTree issues:
+
+	scan/nextscan.  Given p_Ro must verify that current scan point
+	contains that p_Ro.  If not, must locate it.  We also need to
+	implement scan locks.
+
+	btree locking issues during scan/ t_flock_ex/sh
+
+	btree read scan, ReRead not implemented (or tested)
+
+    commit issues:
+	
+	phase1/phase2 locking, indexing, non-indexed deletions during
+	the scan (update scanning code to iterate forwards through Tables
+	and get rid of the record boundry offset crap so we can insert 
+	the commit deadlock data table in the commit-1 check).
+
+---------
+
+
+    At the same time, we have the opportunity to collapse updates and
+    deletions made within the transaction to avoid having record dups
+    (additions, deletions, more additions) with the same time stamp.
+
+    Must not reuse vtable_t or col_t for Deleted columns and tables until
+    vacuum cleaner cleans out the history that might access them, not
+    to mention what happens if they get reinstantiated with the table
+    data still present!  We should be able to accomplish this with a query
+    flag.
+
+    Add to SQL parser:
+
+	CREATE SCHEMA
+	CREATE TABLE	( column info )
+	DROP SCHEMA
+	DROP TABLE
+	ALTER ...
+
+    All meta functions, such as alter column, must select on their entire
+    list in order for the conflict resolver to guarentee that the same
+    id will be used at all sites.
+
+    Duplicate record checks have to be made for insert and update.  This is
+    necessary not only to detect duplicate keys, but also as a guard for
+    commits and replication.
+
+    Key/not-null checks have to be made for insert and update.  Update is
+    a particular problem (if a primary key is changed).
+
+    Data Recovery:
+
+	Append point / record close-out
+
+	Commit record count (deletions + insertions) - scan whole DB to
+	bring it up?  Must be able to back commits out.
+
+	Need permanent timestamp synchronization log for backouts.
+
+    Replication:
+
+	Spanning tree
+
+	Quorum calculation
+
+	Allocate commit time stamp in phase 1, apply highest commit time
+	stamp to phase 2.
+
+	Connect / synchronize
+

@@ -1,0 +1,31 @@
+# DMakefile
+#
+# $Backplane: rdbms/docs/DMakefile,v 1.2 2003/05/31 07:44:36 dillon Exp $
+
+MODULE= docs
+DOCFILES= cinterface.html reference.html drdbms1.html threading.txt
+
+all:
+
+clean:
+    rm -f $(OD)/getbody
+
+depend:
+
+install:	_installdocs
+
+installweb:	_installweb
+
+.include ../DMakefile.inc
+
+WEBFILES= $(DOCFILES:"*":"/home/dillon/htdocs/docs/*")
+
+_installweb:	$(OD) $(OD)/getbody $(WEBFILES)
+
+$(WEBFILES) : $(DOCFILES)
+    $(OD)/getbody < %(right) > %(left).new
+    mv -f %(left).new %(left)
+
+$(OD)/getbody : getbody.c
+    cc $(CFLAGS) %(right) -o %(left)
+

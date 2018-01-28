@@ -1,0 +1,41 @@
+
+*    Preprocess the file ? what about includes?
+*    strip C /* and // comments
+
+*    Generate a query string free in the output code after calling 
+    QueryCLTrans
+
+*    query variable should be upper case QUERY
+*    result variable should be upper case RESULT
+*    columns variable should be upper case COLUMNS
+*    rowN -> ROWN
+*    rowCount -> ROWCOUNT
+*    columns -> COLUMNS
+
+*    result is a res_t, not an int, and should probably be called
+    something else.  
+
+*    if (result) -> clarify to if (result != NULL) {
+
+*    rowCount is the record count but also serves to return error
+    numbers (if negative) and should probably be the 'RESULT' the
+    programmer is looking for.
+
+*    Special character escape select from fubar=t where t.str = '\''.
+
+*    Count parens in expressions
+
+*    Eliminate unnecessary levels of parens in generated code
+
+*    Do not generate variables (COLUMNS) that are not used 
+
+    Perform perfect indention of generated code
+
+    create schema user;
+    create table user.test ( 
+	field1 varchar PRIMARY KEY,
+	field2 varchar
+    );
+
+    insert into user.test ( field1, field2 ) VALUES ( 'key1', 'data1' );
+

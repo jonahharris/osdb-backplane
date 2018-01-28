@@ -1,0 +1,360 @@
+.\" $Backplane: rdbms/man7/backplane.7,v 1.3 2002/12/08 20:17:25 dillon Exp $
+.\"
+.Dd March 18, 2002
+.Dt BACKPLANE 7
+.Os
+.Sh NAME
+.Nm backplane
+.Nd The Backplane database, general information
+.Sh I JUST WANT TO GET THINGS WORKING!  WHAT DO I DO?
+.Pp
+Please read the README file in /usr/local/backplane/README or
+~/backplane/README if you compiled and installed it as non-root.
+.Sh GENERAL DESCRIPTION
+.Pp
+The Backplane, Inc. database is a replicated SQL database which is able
+to guarentee transactional coherency across a user-defined topology of
+peers and snapshots.  The replicator can manage multiple distinct databases,
+each with its own replication topology, and can deal with changes to the
+topology on the fly, such as when you take a database up or down, or when
+a host crashes.  A quorum-of-peers based two-phase commit protocol with
+full conflict resolution is used to handle modifications.  This means,
+for example, that if you have a topology with 3 PEERs and any number of
+SNAPshots, at least 2 PEERs must be operational in order to be able to
+commit to the database.
+.Pp
+The core database uses a historical storage format which allows any 
+transaction to inherently snapshot the database either at a synchronization
+or at any point in the past.  In fact, all transactions rely on this 
+mechanism to provide a snapshot of the database unaffected by other
+commits within any given transaction.  This historical storage format
+is combined with synchronization timestamps to allow any single copy of the
+database, either SNAPshot or PEER, to satisfy read requests (like SELECT
+or COUNT queries).
+.Pp
+The Backplane, Inc. database implements a native, physical-file level
+synchronization mechanism to keep all SNAPshot and PEER databases 
+synchronized with each other.  The synchronization mechanism handles
+all replication duties including synchronization of commit operations.
+Since a historical storage format is used, the synchronizor is able to
+operate directly on the physical database files and does not require
+any sort of change-queue.  Amoung other things, this allows you to create
+large topologies of snapshots and take database instances offline for 
+arbitrary periods of time without having to worry about a change queue
+getting backlogged.  Synchronization is an incremental process that
+is integrated into the replicator and constantly running as a background
+thread.  Due to the fact that replication/synchronization occurs
+at the native file level, the Backplane database can execute meta-SQL
+commands (such as CREATE TABLE, and ALTER COLUMN) in a replicated environment
+without any restrictions whatsoever.
+.Pp
+The Backplane, Inc. database guarentees transactional coherency in two
+ways:  First, a transaction always uses a snapshot of the database.
+When you begin a transaction, modifications made by other transactions,
+even if they sucessfully commit, will not be visible.  You are guarenteed
+a consistent view of the database, period.  Secondly, when you commit
+a transaction, the conflict detector determines if any other transaction
+has modified data that your query accessed.  For example, if transaction A
+and B both start at the same time and A modifies your salary then
+successfully commits the change, and B accesses your salary to modify
+your benefits program, then B's transaction will fail when it attempts to
+commit.  This conflict detection occurs at the row level using a lockless
+algorithm.  Both of these guarentees remain true across the entire
+replication topology.  There is one downside.  The conflict detection
+code must take into account records that have passed the commit-phase-1
+stage but not gotten to the commit-phase-2 stage.  This means that if you
+have N conflicting transactions, all N transactions may fail.  We do not
+guarentee that at least one transaction will succeed.  When you detect
+a transaction failure due to a conflict we recommend delaying a random
+period of time before retrying for this case.
+.Pp
+The SQL implementation is currently rather primitive.  It is an area
+where we intend to do a great deal more work.  There is only one datatype,
+.Ft varchar ,
+representing a variable-length string.  We also do not implement any
+security mechanisms or user authentication.  We do implement SQL commands
+to create and destroy schemas and tables (CREATE SCHEMA, CREATE TABLE,
+DROP SCHEMA, DROP TABLE), and commands to alter columns (ALTER TABLE ADD
+COLUMN and ALTER TABLE DROP COLUMN).  We do not implement foreign keys (yet),
+only primary keys.  Multiple table columns may be specified as a primary key.
+We implement INSERT, UPDATE, and DELETE.
+.Pp
+The Backplane, Inc. database currently automatically indexes and column
+used in a WHERE clause.  A B+Tree index for the column is created and
+updated as required.  We intend to implement appropriate SQL commands to
+give users finer control over indexes.  We do not implement sub-indexes,
+so a query that JOINs on two fields will be forced to use two indexes.
+We implement completely arbitrary JOIN clauses in a fairly efficient
+manner.  Currently only ANDs are supported.  We do not support OR or
+parenthesized expressions.  We support standard comparison and inequality
+operators (but remember, we only implement a string type at the moment).
+We also support a simple anchored substring matching operator called LIKE
+and a case-insensitive equality operator called SAME.  These are probably
+not SQL-legal as yet.  B+Tree index range optimizations are made
+for most operators and special optimizations are made for the equality
+operator, especially when used in JOINs.
+.Pp
+The Backplane, Inc. database can be configured to handle large objects,
+but we recommend limiting object size to a megabyte.  For example, you
+can embed a JPEG in a record.  The database core stores data in binary
+form but most higher level representations are in C string form.  In
+the future we intend to abstract out the binary-storage capabilities of
+the database.
+.Pp
+The replicator is usually able to handle fail-over on the fly, completely
+invisible to clients for almost all queries except streaming selects.  A
+streaming select is a mechanism that allows the application writer to
+retrieve enormous amounts of information from a database without incuring
+any memory overhead.  Normal selects queue the entire response and then
+allow the client to iterate through the records (we do this in order to
+inherently support nested queries and nested transactions within a SELECT).
+.Pp
+.Sh PRIMARY DAEMONS
+.Pp
+The primary daemon is called the
+.Nm replicator .
+This daemon manages all communication protocols: transactions and SQL
+queries, synchronization protocols, commit protocols, fall-back, and so
+forth.  This daemon is able to manage multiple distinct databses each with
+its own topology.  It will fork a
+.Nm replicator
+sub-process for each distinct database.  A replicator sub-process operates
+on behalf of a logical database, whether a physical copy of the database
+exists on the machine or not.  When processing queries the replicator will
+forward the query to one or more other replicators (including possibly itself)
+that have a physical copy of the database.
+.Pp
+A replicator sub-process that is also managing a physical copy of the 
+database will fork one or more database engines, called
+.Nm drd_database .
+These engines actually access the physical repository and execute the SQL
+queries.  At the moment we can only fork one query engine per host per 
+database but we intend to quickly rectify this.
+.Pp
+.Sh OFFLINE BACKUPS, SNAPSHOT OPERATION, PEER OPERATION
+.Pp
+Due to the sophistication of the native-level synchronizer you can trivially
+create and maintain backups of your database over part-time connections.
+It is possible to maintain a snapshot of a multi-gigabyte database over a
+modem link, for example.  The historical storage format allows you to
+make queries as-of any date in the past, all the back to when the database
+was originally created (assuming you have not vacuumed it past that point).
+.Pp
+The synchronizer can synchronize a new PEER or SNAPshot completely from
+scratch.  You do not need to manually copy the physical database to a new
+SNAP or PEER host.  You simply tell the replicator on that host to create
+a new SNAP or PEER of the database and it will talk to other replicators
+in the topology to obtain the data necessary to create and synchronize
+the new copy of the database. In fact, we recommend that this be the only
+mechanism you use to create new SNAPshot and PEER copies of a database.
+Copying physical files without proper transactional locking can result
+in a corrupt file.
+A new database's synchronization timestamp will slowly update as it is
+loaded by the replicator and, in fact, it can take part in historical
+queries the moment its synchronization timestamp is sufficiently advanced.
+A database is able to take part in general queries made by any client on
+any host when that client's requested freeze timestamp is matched or
+exceeded by the synchronization timestamp of the database.
+.Pp
+Creating new PEERs should be done one at a time and very, very carefully,
+because you can stall clients issuing commits if you get into a situation
+where the replication system does not have a quorum of databases available
+for its quorum-based 2-phase commit protocol.  For example, if you have
+three PEERs and two go down, the replicator will not have a quorum and
+modifying transactions will stall until the quorum is restored.
+.Pp
+On the otherhand, creating new SNAPshots is a safe, simple operation.  The
+only effect will be the network bandwidth consumed to load the new snapshot.
+Snapshots can take part in any transaction, even modifying transactions,
+but do not take part in the commit protocol.   For example, if you are running
+a farm of web servers you can run a SNAPshot on each server to handle the
+lion's share of queries or perhaps you might want to run a farm of SNAPshot
+servers serving an even larger farm of web servers, thereby reducing the
+memory and disk footprint required by the web servers.  In either situation
+you will have one or more (typically three) machines running physical copies
+of the database as PEERs backing the whole mess.
+.Pp
+Only PEERs take part in the quorum-based 2-phase commit protocol. 
+SNAPshots keep up to date through
+the replicator's continuously running synchronization mechanism.  In fact,
+PEERs use the same mechanism to keep up to date.  The commit protocol does
+not automatically synchronize PEERs (i.e. does not update their
+synchronization timestamps).  It is up to the synchronization mechanism
+to update these synchronization timestamps and it does so using another
+quorum-based algorithm... basically the incremental synchronization
+mechanism collects all changes made to at least a quorum of PEERs,
+merges it all together, and only then is able to update the the
+synchronization timestamp of the physical database it is synchronizing on
+behalf of.
+.Pp
+It should be noted that the Backplane, Inc.  database has no concept
+whatsoever of a 'master' peer.  All PEERs are treated the same, period.
+.Pp
+.Sh DISTRIBUTING THE LOAD
+.Pp
+The easiest way to distribute load is by adding SNAPshot servers.  Adding
+PEERs may actually slow down modifying transactions due the quorum
+requirement for commits.  Even in a large system we do not recommend
+running more then 5 PEERs.
+.Pp
+.Sh MAINTAINANCE - BACKUPS AND OPERATIONS
+.Pp
+First, Backups.  Backups are easy, just create a SNAPshot that you never
+vacuum or that you vacuum with huge 'keep N days of history' arguments and,
+poof, you have a backup.  Maintainance is harder.   Since the Backplane, Inc.
+database uses a historical storage format, the physical file(s) making up
+the database are effectively append-only.  This makes cleaning up corruption
+easy but can create a rather severe maintainance requirement, especially
+if you do lots of updates to single-records (like when maintaining a counter).
+For archival purposes you usually want to keep at least one of your archival
+snapshots unvacuumed, but for databases handling your live operations 
+regular vacuuming may be a necessity.
+.Pp
+There are two ways to maintain a database.  The first is to create a wholely
+new copy of the database (with a different name) once a month or once a
+year or something like that.  You do this by using the replicator to
+create a new database with a different name, then use the
+.Nm ddump
+program to dump the existing database and feed it into
+.Nm rsql
+on the new differently-named database.  The disadvantage
+of this is that your applications must stay in-step with the name change.
+The advantage is that you get a wholely new, clean copy of your system
+under a different name and your old copy is frozen forever.
+.Pp
+The second way to maintain a database is to periodically vacuum it using
+the
+.Nm drd_vacuum
+utility.  Vacuuming removes the 'deleted' records that accumulate when
+you DELETE or UPDATE records in the database.  You can choose how much
+of the database's 'history' to keep but beware that you should always keep
+enough in at least one copy of your database to allow offline snapshots
+to catch-up.  If no database in the replication group has a historical
+starting timestamp that is less then the current synchronization timestamp
+of a database that is trying to catch-up, that database will not be able
+to synchronize at all.  The downside of vacuuming is that the physical
+copies of your database must be taken offline (detached from the replicator)
+in order to be vacuumed.  The upside is that if you have at least 3 PEERs
+you can vacuum your PEERs one at a time.  That is, you can effectively
+vacuum a live system.  You detach one PEER, vacuum it, reattach, then move on
+to the next PEER.  As long as two PEERs stay operational at any given
+moment, you will not stall any ongoing transactions.  SNAPshots are easier
+to vacuum, you can simply detach them, vacuum them, and reattach them
+without effecting your live system.
+.Pp
+The drd_vacuum utility also has the effect of re-laying out the physical
+database.  Remember, being a historical-formatted database changes and
+additions are simply appended to the physical file.  If several tables
+reside in one schema (typically in a single physical file), records for
+the various tables can be jumbled together in the file.  This can lead to
+non-optimal disk access even with the B+Tree indexes.  drd_vacuum will
+resort records based on the first primary index and lay them out on
+a table-by-table basis in the physical file.
+.Pp
+WARNING, the replicator is supposed to be able to fail-over and internally
+restart queries when it looses the physical database it has forward a 
+query to, but in practice it is certainly possible that there will bugs in
+this very complex protocol.  Detaching databases on a live system can be
+dangerous.  It is our intention to make detaching and attaching a database
+a trivial and inconsequential act, but we may not have achieved this level
+of reliability yet.
+.Pp
+.Sh DISK PARTITIONING FOR LARGE DATABASES
+At the moment all databases are created under the replicator's master
+directory.  If performance is required, this directory should reside on
+a big whopping RAID system.  We intend to provide options to allow the
+files making up the physical database to be split into subdirectories
+which can be directed to different disk mounts.
+.Pp
+.Sh TOPOLOGY MANAGEMENT
+.Pp
+The
+.Nm replicator
+is responsible for managing the replication topology.  You may create any
+arbitrary topology by having the replicator on one host link to the
+replicator running on another host via the
+.Fl l
+replicator command option.  The link is two-way so you do not have to
+create a link in both directions.  In this manner you slowly built a 
+topology -- a spanning tree.  Any replicator in the topology can talk to
+any other replicator in the topology.   The replicator advertises itself
+and its other links over each link.  If a link is broken, the change is
+propogated via the replicator's other links.  The topology is self healing
+and is capable of issuing packets over multiple-paths (though we do not do
+so right now).  Replicators to to each other using an end-to-end 
+sequence-numbered protocol which can detect a failure and re-forge the
+virtual connection.  Link changes are propogated in real time and link
+breakages which result in isolated loops in the graph are handled by
+detecting an overflow condition in the propogated hop count which results
+in a deletion of the loop.  This can result in a short burst of change-message
+activity over the topology.  The replicator automatically uses the shortest
+available path to get from one replicator to another.
+.Pp
+The topology can operate over WAN links.  More specifically, the transaction
+and synchronization/replication protocols are DESIGNED to operate over WAN
+links.  We strongly recommend that you use this capability to configure
+at least one offsite SNAPshot for offsite-backup purposes.  Based on your
+performance requirements you may also be able to distribute your PEERs.
+Locating at least one PEER (in a 3-PEER configuration) offsite should not
+impact performance since only a quorum need to acknowledge a commit for
+a transaction to complete.  Being able to locate all 3 PEERs offsite allows
+an entire colocation facility to go down without blowing up your system,
+at the cost of commit performance.
+.Pp
+We recommend that you always provide a truely redundant network path,
+especially for your core farm of databases.  For example, we recommend a
+triangle of links for a core circle of three PEERs and we recommend
+that the outer circle of SNAPshots connect to at least two PEERs.  If
+extreme reliability is required, machines with multiple linkages
+should probably have two NICs going through an independant/redundant
+switching mesh.
+.Sh FUTURE WORK
+.PP
+.Bl -tag -width indent
+.It Database partitioning.
+We have this wonderful replicator which can replicate and synchronize whole
+databases and which also manages queries.  One big thing we would like to do
+is add a partitioning capability.  For example, to be able to partition
+a database based on an expression around some primary table key into multiple
+distinct databases.  This is the only way I can think of to be able to 
+scale modifying transactions and storage requirements.  I would like to be
+able to partition a database such that I can have all metadata in a 
+primary database X, all customer id's from A-M in a database called X.1,
+and so forth.  Modifying transactions that operate wholely within a partition
+would be able to run the quorum based 2-phase commit protocol only on that
+partition, thereby allowing commits to scale.
+.It Change log and Undo log.
+I would like to be able to generate both a change log and an undo log for
+recovery purposes.  The historical nature of the database's physical files
+make them rather robust, but does not really help a database admin who
+needs to undo a major mistake.  I have absolutely no intention of using these
+logs for replication purposes.  I believe the existing native synchronization
+mechanism is as close to perfect as it is possible to get.  I would use
+the Change log to clean-up after a crash, however.
+.It Crash recovery.  In short: We don't have any crash recovery at the moment.
+I am going to try to get this done before the first release.  It involves
+creating a record-level change log (inclusive of B+Tree changes) that is
+fsync()d, then replaying the log on startup.
+.It Route based on latency.
+At the moment we route based on number of hops.  We need to change this
+to route based on link latency.
+.It SQL types.
+We intend to create an infrastructure to implement common
+SQL types and then we intend to start adding types.
+.It SQL language conformance.
+We intend to make our SQL implementation conform to at least SQL92,
+especially in regagrds to JOIN operations.  At the moment we do not
+conform.  However, it should be noted that the Backplane, Inc. database
+has already accomplished the most difficult part of the work ... making
+meta operations work in a replicated environment and supporting
+sub-transactions.  sub-transactions are, in fact, already used to
+implement things like CREATE TABLE and used invisibly to implement guard
+queries on INSERTs and UPDATEs as part of the conflict resolution mechanism
+as well as used to check for duplicate records and such in INSERTs and
+UPDATEs.  So adding access rights checks isn't a big deal.
+.El
+.Pp
+.Sh ENVIRONMENT
+.Sh SEE ALSO
+.Xr ddump 1
+.Sh HISTORY

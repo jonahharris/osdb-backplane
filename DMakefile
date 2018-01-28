@@ -1,0 +1,63 @@
+# DMakefile
+#
+# $Backplane: rdbms/DMakefile,v 1.28 2003/05/09 16:46:37 dillon Exp $
+
+MODULE= dummy
+MODULES= libsupport libthreads libdbtypes libdbcore libclient cursor database replicator utils rdbms docs man1 man7 man8
+
+.include DMakefile.inc
+
+all:	_subdirs
+
+clean:	_cleansubdirs
+
+depend: _dependsubdirs
+
+install: $(INSTALLLOG) $(INSTALLREADME) $(INSTALLCOPYRIGHT) _installsubdirs
+
+relink:	_relink all
+
+reinstall: _relink all install
+
+test:	$(DRDBMS)
+	-$(REPLICATOR) -D $(DRDBMS) -QUIT
+	sleep 1
+	$(REPLICATOR) -s -D $(DRDBMS) -L $(INSTALLLOG)/test.log
+	sleep 1
+	$(REPLICATOR) -D $(DRDBMS) -e test
+	$(REPLICATOR) -D $(DRDBMS) -REMOVE test
+	$(REPLICATOR) -D $(DRDBMS) -CREATE test
+	$(REPLICATOR) -D $(DRDBMS) -b test
+
+stop:
+	$(REPLICATOR) -D $(DRDBMS) -QUIT
+
+start:
+	$(REPLICATOR) -s -D $(DRDBMS) -L $(INSTALLLOG)/test.log
+
+startdebug:
+	$(REPLICATOR) -s -f -D $(DRDBMS)
+
+_relink:
+	rm -f bin/drd_database bin/llquery bin/replicator
+
+TARFILE= /home/dillon/htdocs/FreeBSDPorts/backplane-$(VERS).tar.gz
+
+dist:	clean
+	rm -rf /tmp/backplane-$(VERS)
+	mkdir /tmp/backplane-$(VERS)
+	cpdup . /tmp/backplane-$(VERS)
+	rm -rf `find /tmp/backplane-$(VERS) -name CVS`
+	find /tmp/backplane-$(VERS) -name "*.orig" -delete
+	find /tmp/backplane-$(VERS) -name "*.rej" -delete
+	rm -rf /tmp/backplane-$(VERS)/objs
+	rm -rf /tmp/backplane-$(VERS)/bin
+	rm -f /tmp/backplane-$(VERS)/TODO
+	rm -f /tmp/backplane-$(VERS)/INDEXLOG*
+	rm -f /tmp/backplane-$(VERS)/php4/*mysql*
+	(cd /tmp; tar czf $(TARFILE) backplane-$(VERS))
+	chown dillon $(TARFILE)
+	chmod 644 $(TARFILE)
+	rm -rf /tmp/backplane-$(VERS)
+	(cd /home/dillon/htdocs/FreeBSDPorts; md5 backplane-$(VERS).tar.gz)
+

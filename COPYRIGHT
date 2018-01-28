@@ -1,0 +1,60 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html>
+<head>
+	<title>Open Source Software Copyright Terms - Backplane, Inc.</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+	<link rel="stylesheet" href="style48.CSS" type="text/css">
+	<meta name="description" content="Open Source Database Project offers the FreeBSD based Backplane, Inc fault-tolerant, distributed, replicated, relational database core with a free license for internal business processes.">
+	<meta name="keywords" content="open source database freebsd linux enterprise business">			
+	<meta name="copyright" content="Copyright 1998-2003 Backplane, Inc. All rights reserved.">
+			<meta name="copyright" content="Copyright 1998-2003 Backplane, Inc. All rights reserved.">
+		<meta name="robots" content="index, follow">
+		<meta name="author" content="Michael Dillon, Email mike@backplane.com">		
+</head>
+<body bgcolor="#ffffff" leftmargin="15" marginwidth="15" topmargin="10" marginheight="10">
+<table cellspacing="0" cellpadding="0" border="0" align="center" bgcolor="#FFFFFF" >
+	<tr align="left" valign="top">
+		<td>
+			<table cellspacing="0" cellpadding="0" border="0" align="left" bgcolor="#FFFFFF" >
+				<tr align="left" valign="top">
+				    <td rowspan="2"><a href="index.html"><img src="images/discuss_logo.jpg" width="218" height="73" border="0" alt="Open Source Database Project - Home"></a></td>
+				    <td colspan="5"><img src="images/discuss_top.jpg" width="513" height="50" border="0"></td>
+				</tr>
+				<tr align="left" valign="top">
+				    <td><a href="index.html"><img src="images/home.gif" width="102" height="24" border="0" alt="Open Source Database Project - Home"></a></td>
+				    <td><a href="faq.html"><img src="images/faq.gif" width="102" height="24" border="0" alt="Open Source Database Frequently Asked Questions"></a></td>
+				    <td><a href="licensing.html"><img src="images/licensing.gif" width="102" height="24" border="0" alt="Open Source Database Licensing"></a></td>
+				    <td><a href="download.html"><img src="images/download.gif" width="102" height="24" border="0" alt="Open Source Database Download"></a></td>
+
+				    <td><a href="discuss.html"><img src="images/discuss.gif" width="102" height="24" border="0" alt="Open Source Database Discussion"></a></td>
+				</tr>
+			</table>
+		</td>
+	</tr>
+	<tr>
+		<td>
+			<table cellspacing="0" cellpadding="0" border="0">
+				<tr>
+				    <td align="left" valign="top" width="109"><img src="images/discuss_side.jpg" width="109" height="288" border="0"></td>
+				    <td width="5">&nbsp;&nbsp;</td>
+				    <td align="left" valign="top" width="590"><br>
+<p class="DOC" align="left">
+<span class="PBOLD">Backplane, Inc. Copyright Notice</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="copyright-print.html" class="LINK">Printable Version</a></p>
+<p class="DOC" align="left">
+This software is &copy; Copyright 1999-2003 by Backplane, Inc. All Rights Reserved. This copyright has the following stipulations:<br><br>
+(1) There are two Backplane, Inc. licenses: a Commercial License, and a Free License. The license you need depends on the conditions under which you use the Backplane code. Backplane is heavily involved in the open source community and is committed to creating open source friendly terms for the use of its software. To learn more about various licensing scenarios, go to <a href="licensing.html" class="LINK" title="Licensing information">http://www.backplane.com/licensing.html</a><br><br>
+(2) The Free License may be used in typical open source scenarios but you must read the free license document carefully to make sure it applies to you. Free licenses do not require registration. You can obtain a copy of the free license at <a href="BPFreeLicense4.3.03.pdf" class="LINK" title="Download the Free License (PDF)">http://www.backplane.com/BPFreeLicense4.3.03.pdf</a><br><br>
+(3) A Commercial License MUST be used in any situation where the Free License is not applicable. You can request and receive clarification from Backplane if you are not sure if your use falls under the Free License or you require a Commercial License. All uses of this material are governed by these copyright terms PLUS the license terms under the appropriate license. Without a license, you have no rights to any of the material. Commercial Licenses are negotiated on a case by case basis with Backplane. Please follow the directions on our commercial license web page at <a href="BPCommLicense.4.3.03.pdf" class="LINK" title="Download the Commericial License (PDF)">http://www.backplane.com/BPCommLicense.4.3.03.pdf</a><br><br>
+(4) NON TRANSFERABILITY: Unless otherwise stated, Backplane licenses are non-transferable. This means that it applies to you, not to the people you distribute the product to. These people are subject to the same Copyright and MAY OR MAY NOT qualify for their own, free, unregistered license. Being an unregistered licensee, and not having signed anything, you are not required to accept this license. However, nothing else grants you permission to use this work or its derivative works. Therefore, your use constitutes acceptance of this copyright and license.</p>
+<p class="DOC" align="center">
+<span class="pfoot" align="center">Copyright &copy; 1999-2003 Backplane Inc. All Rights Reserved.</span></p>
+</td>
+	    			<td width="5">&nbsp;</td>
+				</tr>
+			</table>
+		</td>
+	</tr>
+
+</table>
+</body>
+</html>

@@ -1,0 +1,29 @@
+# DMakefile
+#
+# $Backplane: rdbms/libdbcore/DMakefile,v 1.21 2003/04/11 21:52:30 dillon Exp $
+
+MODULE= dbcore
+LMODULE= libdbcore
+SRCS= dbcore.c dbfile.c dbmem.c dbfault.c dblog.c index.c scan.c sync.c \
+	delete.c query.c commit.c replicate.c llquery.c hlquery.c \
+	lex.c parse.c dbtime.c btree.c conflict.c datamap.c simplequery.c
+#EXTRADEFS= -DMEMDEBUG
+INITLLQ= initdb.llq
+
+HEADERS= types.h
+
+all:	_lib
+
+clean:	_cleanlib
+
+depend:	_dependlib
+
+.include ../DMakefile.inc
+
+install:	_installlib $(INSTALLETC) $(INSTALLETC)/$(INITLLQ)
+
+$(INSTALLETC)/$(INITLLQ) : $(INITLLQ)
+    cp %(right) %(left).new
+    mv -f %(left).new %(left)
+
+

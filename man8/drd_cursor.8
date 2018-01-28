@@ -1,0 +1,206 @@
+.\" $Backplane: rdbms/man8/drd_cursor.8,v 1.1 2002/03/20 03:58:36 dillon Exp $
+.\"
+.Dd March 18, 2002
+.Dt DRD_CURSOR 8
+.Os
+.Sh NAME
+.Nm drd_cursor
+.Nd C Language SQL cursors preprocessor
+.Sh SYNOPSIS
+.Nm
+.Ar inputFile
+.Ar outputFile
+.Sh DESCRIPTION
+.Pp
+.Nm
+processes a C language file, locates embedded SQL statements, and
+converts them into
+.Nm libclient
+procedure calls.  The
+.Fn main
+function of your C code must first open a database and then obtain an
+instance of the database.  A single master database can be used by
+threads to open instances.  An instance may only be used by one thread
+at a time, but creating instances is a cheap operation.  In a multi-threaded
+program, each thread typically creates its own instance.
+.Pp
+Here is some sample cursors code:
+.Bd -literal
+#include "libsupport/export.h"
+#include "libthreads/export.h"
+#include "rdbms/errors.h"
+#include "libclient/export.h"
+
+database_t Db;
+database_t DbI;
+dbstamp_t  FTs;	/* freeze timestamp */
+
+main()
+{
+    int eno;
+    dbstamp_t syncTs;
+
+    /* handle -D option if you want */
+    /* SetDefaultDBDir(argument) */
+    Db = OpenCLDataBase("test", &eno);
+    if (Db == NULL)
+	fatal("OpenCLDataBase error %d (%s)\\n", eno, GetCLErrorDesc(eno));
+    DbI = OpenCLInstance(Db, &syncTs, CLTYPE_RW);	/* or CLTYPE_RO */
+    if (DbI == NULL)
+	fatal("OpenCLInstance error\\n");
+
+    fubar();
+}
+
+fubar()
+{
+    int status;
+
+    /*
+     * BEGIN for a normal query, BEGINRO does an automatic rollback.
+     * This begins a transaction.
+     */
+    BEGIN(DbI, FTs, status) {
+	SELECT t.key, t.data FROM test.test=t WHERE t.key > '0';
+	{
+	    printf("KEY %s DATA %s\\n", t.key, t.data);
+	    /*
+	     * BEGINs can be arbitrarily nested.  Any modifications you
+	     * make in a nested transaction can be rolled-back by
+	     * breaking out of it with ROLLBACK, otherwise they will
+	     * be committed (integrated into the parent transaction, not
+	     * committed to the physical database).
+	     */
+	    BEGIN {
+		...
+	    }
+
+	    /*
+	     * You can arbitrarily nest other queries, including other
+	     * SELECTs.  Exception: You cannot nest queries if a streaming
+	     * select is used.  This is explained later.
+	     */
+	    UPDATE test.test SET t.data = 'x' WHERE t.data = 'y';
+	}
+	ROLLBACK;	/* breaks out of begin by rolling back */
+			/* otherwise we will automatically commit */
+    }
+    /* status contains return status, 0 for commit success */
+}
+.Ed
+.Pp
+.Sy Db
+represents the master handle for the database you are accessing.  After
+opening the database you must open instances of the database and then
+perform transactions on those instances.
+.Sy DbI
+represents an instance of the database.  Only a single thread may use
+an instance, but there is nothing preventing you from opening multiple
+instances in a multi-threaded program.
+.Sy FTs
+represents the freeze timestamp.  When you issue a
+.Sy BEGIN ,
+your queries will see the database as of the freeze timestamp.
+.Fn OpenCLInstance
+returns the most recent synchronization timestamp available and this
+is typicaly what is passed to the initial
+.Sy BEGIN .
+If you successfully commit your transaction, the cursors will adjust
+the
+.Sy FTs
+variable you pass to
+.Sy BEGIN
+to reflect the commit timestamp + 1.  Thus when you issue another
+.Sy BEGIN
+using the same
+.Sy FTs
+variable, the second transaction will be coherent with the previous
+transaction.  Note that the commit timestamp may be greater then the
+most recent synchronization point as returned by
+.Fn OpenCLInstance ,
+because synchronization is a background operation performed by the
+replicator.  If you wish to guarentee coherency between transactions,
+that is, if you want the second transction to see modifications successfully
+comimtted by the first, then you must pass the timestamp adjusted by
+the previous transaction to the next transction.
+.Pp
+Transactions do not need to be coherent in order to detect conflicts.
+If you start a transaction with a freeze time stamp some time in the past
+and you access elements of the database which were modified after that
+point, and try to commit, your commit will fail due to the conflict with
+the later modification and the
+.Sy FTs
+variable will be adjusted to the timestamp of the conflict + 1 so your
+retry (if you choose to retry) gets the most recent data in the database.
+.Pp
+Conflict resolution occurs both in a historical sense and in a 
+competing-transactional sense.  The Backplane database does not do
+conflict resolution against uncomitted data so inner transactions will
+always succeed.  When an outer transaction is committed, the replicator
+will issue a phase-1 commit and then do conflict resolution against
+(1) any modifications comitted to the database after the freeze timestamp,
+including historically comitted modifications, (2) any other transactions
+currently in a phase-1 commit, and (3) any other transactions which have
+completed the phase-2 commit successfully even if the data has not yet
+been synchronized across the replication group.  In otherwords, if your
+commit suceeds the Backplane database will have guarenteed that none of
+the records you accessed within the transaction have been modified by
+anyone other then yourself.
+.Pp
+It should be noted that due to (2) above, it is possible for two competing
+transactions that conflict with each other to BOTH FAIL.  The Backplane
+database does not guarentee that at least one transaction will succeed.
+I will repeat that:  The backpane database does not make this guarentee.
+For this reason we recommend that you delay a random period of time
+before retrying a transaction that has failed to avoid livelock.
+.Pp
+Please note that specifying a
+.Sy FTs
+that is beyond the most recent synchronization point for the database will
+cause your queries to stall until the replicator has caught up to your
+specified synchronization point.  This can cause a short stall when doing
+back-to-back transactions since the replicator must fully synchronize
+the committed data from the previous transaction to at least one database
+in the replication group before the new transaction can begin.  For this
+reason you should make a distinction between a read-only query (that you
+intend to rollback or which does not modify the database in any way) and a
+read-write query.  The cursors code cannot detect this for you at the
+moment.  Avoiding unnecessary 'null' commits will greatly enhance the
+performance of your application.
+.Pp
+When running a multi-threaded program, where several database instances
+are open at the same time, note that the transactions will not be coherent
+with each other.  Conflict resolution still occurs, of course, just as if
+each instance were running on some other process or host.  Also, when
+running distinct non-conflicting transactions with a single database
+instance, such as when interating through a list of keys and making 
+changes restricted to those keys, you can save and restore the original
+.Sy FTs
+between transactions (that is, force them to be non-coherent with each
+other).  This will avoid the synchronization stall that would normally
+occur between the transactions.
+.Pp
+Finally, note that our protocol support library usually queues the entire
+responce to a
+.Sy SELECT
+query before entering the loop.  This allows you to nest SELECTs.  But if
+your query returns a huge amount of information, like many megabytes or
+gigabytes, you may run your process out of memory or otherwise adversely
+impact the host.  To avoid this you can use a streaming query.  There
+are two restrictions to the use of a streaming query: (1) the replicator
+cannot automatically restart a streaming query when it does internal
+fail-over and (2) you cannot nest other queries within the transaction,
+you have to use a separate database instance to nest instead and, being
+a separate instance, such nesting will also be a separate transaction.
+You can force data coherency in the new instance by using the same FTs
+but you will not see any modifications made by the first transaction (which
+has not yet comitted).  Confusing, eh?
+.Pp
+.Sh EXAMPLES
+.Sh ENVIRONMENT
+.Sh SEE ALSO
+.Xr ddump 1
+.Sh HISTORY
+The
+.Nm
+command first appeared in version 1.0

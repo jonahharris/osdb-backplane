@@ -1,0 +1,17 @@
+# DMakefile
+#
+# $Backplane: rdbms/database/DMakefile,v 1.7 2002/09/25 01:48:42 dillon Exp $
+
+MODULE= drd_database
+SRCS= main.c instance.c recover.c
+
+all:	_exe
+
+clean:	_cleanexe
+
+depend:	_dependexe
+
+install:	_installexe
+
+.include ../DMakefile.inc
+

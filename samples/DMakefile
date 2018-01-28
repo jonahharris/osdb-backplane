@@ -1,0 +1,19 @@
+# DMakefile for samples directory
+#
+
+INCLS= /usr/local/backplane/include
+LIBS= /usr/local/backplane/lib
+CFLAGS=	-D_BACKPLANE_BASE=/usr/local/backplane -I$(INCLS)
+#LFLAGS= -L$(LIBS) -lclient -lthreads -lsupport
+LFLAGS= -L$(LIBS) -lpclient -lsupport
+CC ?= cc
+
+all:	test
+
+test:	test.e
+	drd_cursor test.e tmp_test.c
+	$(CC) $(CFLAGS) tmp_test.c $(LFLAGS) -o test
+    
+clean:
+	rm -f test test.core tmp_test.c
+

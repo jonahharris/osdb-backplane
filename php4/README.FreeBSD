@@ -1,0 +1,90 @@
+
+			    PHP SUPPORT UNDER FREEBSD
+
+    Backplane supports PHP4 under Apache on UNIX systems.  You should first
+    install the php4 port from the ports collection.  
+
+	cd /usr/ports/www/mod_php4
+	make
+	make install
+
+    Then cd back into the backplane source distribution's php4 directory
+    (that would be the directory containing this README file) and build
+    and install the php support.  Note that this support relies on php4
+    having already been installed and is not built automatically.
+
+	dxmake
+	dxmake install
+
+    The php_backplane.lo module will be installed in /usr/local/backplane/lib
+    and /usr/local/lib/php/extensions.  If you are not root php_backplane.lo
+    will only be installed in ~/backplane/lib.
+
+    If you installed the extension as root you should modify the
+    /usr/local/etc/php.ini file to contain the following lines.
+
+	extension_dir=/usr/local/lib/php/extensions
+	extension=php_backplane.lo
+
+
+			    TESTING THE PHP SUPPORT
+
+    To test the support first make sure your RDBMS_DIR environment variable
+    is pointing at the the 'drdbms' subdirectory relative to the backplane
+    install directory.  For example, if you installed backplane as a user
+    rather then as root it would be something like (for [t]csh):
+
+	setenv RDBMS_DIR $HOME/backplane/drdbms
+
+    or (for /bin/sh):
+
+	RDBMS_DIR=$HOME/backplane/drdbms
+	export RDBMS_DIR
+
+    In the main source directory type 'dxmake test' to initialize a test
+    database and start the backplane system.  Make sure the test database
+    is operational by running 'ddump' on it to see if ddump can connect and
+    dump the database:
+
+	cd ..
+	dxmake test
+	~/backplane/bin/ddump test
+
+    Then CD back into this directory and try running the test.php script:
+
+	cd php4
+	./test.php
+
+				PHP FROM APACHE
+
+    Edit /usr/local/etc/apache/httpd.conf and make sure the following lines
+    exist and are not commented out.  Note that the port may incorrectly
+    place these lines inside an <IfDefine SSL>.  Make sure the lines are
+    outside any <If*> sequences.  The default apache httpd.conf file should
+    already contain conditionals to add the various php mime types and
+    support for index.php files.
+
+	LoadModule php4_module        libexec/apache/libphp4.so
+	AddModule mod_php4.c
+
+    Then restart apache with apachectl (typcally 'apachectl stop' and then
+    'apachectl start').
+
+    In order for your apache-based php scripts to properly connect to the
+    backplane database you must either (1) set the RDBMS_DIR environment
+    variable prior to starting apache or (2) supply the rendezvous directory
+    as a second argument to the bkpl_connect() call in your PHP scripts.
+    For example:
+
+	$id = bkpl_connect("test", "/usr/local/backplane/drdbms");
+
+    The backplane database uses UNIX DOMAIN sockets.  In order to connect
+    to the backplane database running on a remote machine you must configure
+    the backplane database's replicator on your local machine to talk to the
+    remote machine or otherwise tie into the mesh.  See 'man replicator' and
+    'man backplane' for more information.  Note that you do NOT need to
+    create a SNAPshot on your local machine, you need only run a replicator
+    that ties into the backplane mesh topology that you construct between
+    your machines.  However, running a SNAPshot of the database on your
+    local machine may greatly improve script performance.
+

@@ -1,0 +1,23 @@
+# DMakefile
+#
+# $Backplane: rdbms/libthreads/DMakefile,v 1.16 2002/09/25 01:48:51 dillon Exp $
+#
+
+MODULE= threads
+LMODULE= libthreads
+SRCS= main.c sched.c softint.c notify.c timer.c queue.c \
+	io.c sio.c aio.c iomsg.c tlock.c flock.c pio.c \
+	inetconnect.c udomconnect.c
+
+HEADERS= export.h
+
+all:	_lib
+
+clean:	_cleanlib
+
+depend:	_dependlib
+
+install:	_installlib
+
+.include ../DMakefile.inc
+

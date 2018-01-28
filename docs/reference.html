@@ -1,0 +1,410 @@
+<HTML>
+<HEAD>
+<TITLE>SQL Reference to the The Backplane Inc. Fault-Tolerant DRDBMS - $Backplane: rdbms/docs/reference.html,v 1.2 2003/05/31 07:47:54 dillon Exp $</TITLE>
+</HEAD>
+<BODY>
+<CENTER><H2><B>SQL Reference to the Backplane Inc. Fault-Tolerate DRDBMS</B></H2></CENTER>
+<CENTER><H2><B>11 April 2003</B></H2></CENTER>
+
+<P><H2><B>(I) Overview</B></H2>
+<UL>
+    <P>
+    The Backplane database implements a subset of SQL and one primary 
+    datatype, a variable-length string.  This document provides a reference
+    to all currently supported commands.
+    <P>
+    All Backplane SQL must be enclosed in a transaction and most commands
+    must be terminated by a semi-colon, even when specified through the DSQL
+    or RSQL command line interfaces.  All Backplane SQL transactions operate
+    relative to a freeze timestamp (which defaults to the latest timestamp)
+    and do not see changes made to the database by other entities after
+    the specified timestamp.  In otherwords, a transaction always operates on
+    a consistent view of the database.  When you commit a modifying 
+    transaction, the commit will fail and the transaction must be retried
+    if other entities made modifications that would alter any queries made
+    during the transaction.   
+    <P>
+    The freeze timestamp tracks commits and commit failures.  If a commit 
+    fails the default freeze timestamp for the next transaction or the
+    retry is adjusted pass the conflict point.  If you were to use the 
+    original freeze timestamp your transaction would simply fail again.
+    If a commit succeeds the default freeze timestamp for the next 
+    transaction is updated to make the contents of the previous commit
+    available to the following transaction. 
+    <P>
+    This serialization may introduce performance penalties in a
+    replicated system because it takes a quorum of replication peers (which
+    is just one database if you have no replication peers) to agree to
+    a new synchronization point.  You can reduce or avoid this penalty
+    by doing more work within a modifying transaction... for example, by
+    enclosing it in a larger modifying transaction that encompasses several
+    sub-transactions.  You may also be able to reduce or avoid this
+    penalty when you intend to run a large number of non-interdependant
+    transactions.  When running non-interdependant transactions you can use
+    the original freeze timestamp for each transaction (at least as long as
+    you do not get a conflict) which allows the transaction to proceed without
+    having to wait for the prior transaction to synchronize in the backend.
+    <P>
+    In <B>dsql</B> a transaction looks something like this:
+    <UL>
+	<P><PRE>
+(test:?) begin;
+Begin Transaction flags=0000
+(test:?) select * FROM sys.tables;
+1     'sys', 'repgroup', '000c', 'sys'
+2     'sys', 'tables', '0008', 'sys'
+3     'sys', 'schemas', '0004', 'sys'
+> RESULT 3
+(test:?) rollback;
+Rollback Succeeded
+	</PRE>
+    </UL>
+    <P>
+    A transaction always starts with a <B>begin</B> and terminates with
+    either a <B>rollback</B> or a <B>commit</B>.  Sub-transactions are
+    fully supported but other entities accessing the database will have
+    no visibility into any changes you make until the top-level transaction
+    is committed.   Non-modifying transactions should use <B>beginro</B>
+    instead of <B>begin</B>.
+    <P>
+    <UL>
+	<P><PRE>
+(test:?) beginro;
+Begin Transaction flags=0001
+(test:?) select * FROM sys.tables;
+1     'sys', 'repgroup', '000c', 'sys'
+2     'sys', 'tables', '0008', 'sys'
+3     'sys', 'schemas', '0004', 'sys'
+> RESULT 3
+(test:?) rollback;
+Rollback Succeeded
+	</PRE>
+    </UL>
+</UL>
+<P><H2><B>(II) SQL Reference</B></H2>
+<P>
+sql_statement:
+<UL>
+    <P><B>BEGIN</B> [ <B>SYNC</B> | <B>READONLY</B> | <B>STREAMING</B> | <I>timestamp</I> ]* ";"
+    <BR><B>BEGINRO</B> [ <B>SYNC</B> | <B>STREAMING</B> | <I>timestamp</I> ]* ";"
+    <BR><B>COMMIT</B> ";"
+    <BR><B>ROLLBACK</B> ";"
+    <UL>
+	<P>
+	These SQL commands represent transaction control.  All transactions
+	must start with a <B>BEGIN[RO]</B> and terminate with a <B>COMMIT</B>
+	or <B>ROLLBACK</B>.  You should use <B>BEGINRO</B> or 
+	<B>BEGIN READONLY</B> when initiating any non-modifying transaction
+	to improve performance.  Various keywords effecting the transaction
+	may also be specified:
+	<UL>
+	    <P><B>SYNC</B> - This forces the transaction to synchronize
+	    the freeze timestamp to the latest available from the 
+	    database engine, or the specified timestamp, whichever is larger.
+	    It is typically used in monitoring applications which would
+	    otherwise just use the same freeze timestamp over and over again
+	    (and thus never see any changes made to the database relative to
+	    the first transaction).
+	    <P><B>READONLY</B> - A read-only transaction allows the Backplane
+	    database to optimize management of the transaction.
+	    <P><B>STREAMING</B> - Normally the user interface library collects
+	    all results from a SELECT prior to returning the first result,
+	    which allows nested SELECTs to be trivially specified.  If your
+	    query is expected to return millions of records this could run
+	    your process out of memory.  If you specify STREAMING the results
+	    from a SELECT are returned on demand.  You cannot nest queries
+	    inside a streaming SELECT.
+	    <P><I>timestamp</I> - Typically a 64 bit hex value
+	    0xNNNNNNNNNNNNNNNN representing a timestamp / transaction id.
+	    If not specified the previous timestamp (possibly updated by
+	    the previous transaction) will be used.  Remember, the Backplane
+	    database is a historical database so you can issue queries as of
+	    any date in the past that is held in the database.
+	</UL>
+	<P>
+	All queries within a transaction see a consistent view of the 
+	database as-of the freeze point, plus any modifications made locally
+	within the transaction.  Changes made by other entities will not be
+	visible and changes made within the transaction will not be visible
+	to other entities until your top-level commit.  The Backplane database
+	supports full transactional nesting.  Nested transactions may be 
+	committed or rolled-back but will only become visible to other 
+	entities when the top-level transaction commits.
+	<P>
+	Commits may fail due to conflicts.  For example, if transaction #1
+	reads data record A and modifies data record B, and transaction #2
+	modifies data record A, then transaction #1 may fail if transaction #2
+	commits before transaction #1 can.  <B>The Backplane database uses
+	infinitely fine-grained opportunistic locking to guarentee 
+	transactional coherency.  A commit will fail if data accessed 
+	by one transaction is modified by another transaction before the
+	first transaction can commit.  Since no record locking occurs,
+	neither transaction will stall.</B>  In a replicated system it is
+	possible for all conflicting transactions to fail due to the
+	selection of the quorum.  That is, there is no guarentee of at least
+	one transaction successfuly committing in a conflict situation.  In
+	a non-replicated system at least one transaction will always 
+	successfuly commit in a conflict situation.  It is recommended that
+	you retry commits which fail due to a conflict and that you introduce
+	a small random delay prior to your retry.
+    </UL>
+    <P><B>INSERT INTO</B> <I>table_spec</I> "(" <I>column_name</I> [ "," <I>column_name</I> ]* ")" <B>VALUES</B> "(" <I>data</I> [ "," <I>data</I> ]* ")" ";"
+    <UL>
+	<P>
+	Inserts a record into the database.  The Backplane RDBMS automatically
+	generates a guard query to validate the record (check for duplicate
+	keys and so forth).
+    </UL>
+    <P><B>DELETE FROM</B> <I>table_spec</I> <B>WHERE</B> <I>sql_exp</I> ";"
+    <UL>
+	<P>
+	Delete zero or more records.   The Backplane RDBMS does not currently
+	validate foreign key restrictions.
+    </UL>
+    <P><B>SELECT</B> <I>column_spec</I> [ "," <I>column_spec</I> ]*
+	<B>FROM</B> <I>table_spec</I> [ "," <I>table_spec</I> ]*
+	<B>WHERE</B> <I>sql_exp</I> 
+	[ <B>ORDER BY</B> <I>column_spec</I> [ "," <I>column_spec</I> ]* ]
+	[ <B>LIMIT</B> <I>integer</I> ]
+	";"
+    <BR><B>HISTORY</B> <I>column_spec</I> [ "," <I>column_spec</I> ]*
+	<B>FROM</B> <I>table_spec</I> [ "," <I>table_spec</I> ]*
+	<B>WHERE</B> <I>sql_exp</I> 
+	[ <B>LIMIT</B> <I>integer</I> ]
+	";"
+    <UL>
+	<P>
+	Retrieve columns from a table or tables in the database according
+	to the expression.  The Backplane RDBMS can execute arbitrary
+	joins but they must currently be explicitly specified.  Complex
+	joins or expressions may result in duplicate records being returned.
+	Here are some examples:
+	<UL>
+	    <P>SELECT a.key, b.data FROM test.table1=a, test.table2=b WHERE
+	    a.key = 'abc' AND a.key = b.key;
+	    <P>SELECT a.key, b.data FROM test.table1=a, test.table1=b WHERE
+	    a.key = 'abc' AND b.fubar = a.key;
+	    <P>SELECT * FROM test.table;
+	</UL>
+	<P>
+	The <B>HISTORY</B> command works like <B>SELECT</B> but returns all
+	historical and current records in the database that match the 
+	specified parameters.  For example, if you made 10 updates to a 
+	particular record in the database <B>HISTORY</B> will return all
+	10 records rather then just the current version of the record.
+	To differentiate the records the programmer usually retrieves certain
+	internal columns along with the record data.  The internal columns
+	available are:
+	<UL>
+	    <P><B>__timestamp</B> - The transaction id representing when the
+		record was committed.  The transaction id also doubles as a
+		timestamp.  Each top-level transaction made to the Backplane
+		database has a unique transaction id, even in a replicated
+		environment.
+	    <P><B>__vtid</B> - The virtual table id for the record.  This
+		identifier consists of four hex digits.
+	    <P><B>__userid</B> - The tracking id for the record (set by a
+		low level C API call.  This field may be NULL).
+	    <P><B>__opcode</B> - The opcode for the record.  The opcode
+		is two hex digits representing:
+		<UL>
+		    <P><B>RHF_INSERT (0x01)</B> - An inserted record
+		    <P><B>RHF_UPDATE (0x02)</B> - An updated record (may only follow a DELETE) 
+		    <P><B>RHF_DELETE (0x04)</B> - A deleted record.
+		</UL>
+		<P>
+		Additionally the <B>RHF_REPLICATED (0x08)</B> bit may be 
+		set in the opcode indicating that the record was obtained
+		from another peer or snapshot in the replication group.  This
+		bit is typically only used for debugging purposes.
+		<P>
+		The <B>INSERT</B> SQL command generates a RHF_INSERT record.
+		The <B>UPDATE</B> SQL command generates a RHF_DELETE record
+		followed by a RHF_UPDATE record.  The <B>DELETE</B> SQL
+		command generates a RHF_DELETE record.  For your purposes you
+		can treat RHF_UPDATE the same as RHF_INSERT... that is, a
+		delete and an insert occuring within the same transaction.
+	    <P><B>__date</B> - The date the record was committed in 
+		human-readable form.  The date is derived from the
+		transaction id / timestamp.
+	</UL>
+    </UL>
+    <P><B>COUNT</B> <B>FROM</B> <I>table_spec</I> [ "," <I>table_spec</I> ]*
+	<B>WHERE</B> <I>sql_exp</I>
+	[ <B>LIMIT</B> <I>integer</I> ]
+	";"
+    <UL>
+	<P>
+	Return the number of records that the query matches.
+    </UL>
+    <P><B>UPDATE</B> <I>table_spec</I> [ "=" <I>id</I> ] <B>SET</B>
+	<I>column_name</I> "=" <I>data</I> [ "," <I>column_name</I> "=" <I>data</I> ]* <B>WHERE</B> <I>sql_exp</I> ";"
+    <UL>
+	<P>
+	Update zero or more records matching the expression, setting the
+	specified columns to the specified data.  The Backplane database will
+	automatically generate internal guard queries to validate the update
+	(check for duplicate keys and so forth).
+    </UL>
+    <P><B>CLONE</B> <I>table_spec</I> [ "=" <I>id</I> ] <B>SET</B>
+	<I>column_name</I> "=" <I>data</I> [ "," <I>column_name</I> "=" <I>data</I> ]* <B>WHERE</B> <I>sql_exp</I> ";"
+    <UL>
+	<P>
+	<B>CLONE</B> works exactly like <B>UPDATE</B> but (A) does not delete
+	the record(s) being updated and (B) clones the column data from the
+	original records into the new records plus the <B>SET</B> modifications
+	you make to those columns.  The Backplane database will automatically
+	generate internal guard queries to validate the update so generally
+	speaking you must modify one or more primary keys in the record
+	when cloning it to avoid a duplicate key error.
+    </UL>
+    <P><B>CREATE</B> <B>SCHEMA</B> <I>schema_name</I> [ <B>USING</B> "<I>filename</I>" ] ";"
+    <BR><B>CREATE</B> <B>TABLE</B> <I>schema_name</I> "." <I>table_name</I> [ <B>USING</B> "<I>filename</I>" ] "(" [ <I>create_def</I> [ "," <I>create_def</I> ]* ] ")" ";"
+    <UL>
+	<P>
+	Create a new schema, create a new table within a schema.
+    </UL>
+    <P><B>DROP</B> <B>SCHEMA</B> <I>schema_name</I> ";"
+    <BR><B>DROP</B> <B>TABLE</B> <I>table_spec</I> ";"
+    <UL>
+	<P>
+	Destroy a schema or a table.  You must destroy all underlying tables
+	before you can destroy its schema, and you must delete all the records
+	in a table before you can destroy a table.
+    </UL>
+    <P><B>ALTER</B> <B>TABLE</B> <I>table_spec</I> <B>ADD</B> [<B>COLUMN</B>] <I>create_def</I> ";"
+    <P><B>ALTER</B> <B>TABLE</B> <I>table_spec</I> <B>DROP</B> [<B>COLUMN</B>] <I>column_name</I> ";"
+    <UL>
+	<P>
+	Add or delete columns from an existing table.
+    </UL>
+</UL>
+table_name:
+<UL>
+    <P><I>id</I>
+    <UL>
+	<P>A table name is basically just an alpha-numeric identifier.
+    </UL>
+</UL>
+table_spec:
+<UL>
+    <P><I>schema_name</I> "." <I>table_name</I> [ "=" <I>id</I> ]
+    <UL>
+	<P>A table specification consists of a schema and table name
+	and an optional identifier to differentiate column specifications
+	in a join.
+    </UL>
+</UL>
+column_name:
+<UL>
+    <P><I>id</I>
+    <UL>
+	<P>A column name is basically just an alpha-numeric identifier.
+    </UL>
+</UL>
+column_spec:
+<UL>
+    <P>[ <I>id</I> "." ] <I>id</I>
+    <UL>
+	<P>A column specification is basically just an
+	alpha-numeric identifier specifying the name of the column.
+	In a complex expression where you are joining
+	on several tables you must prefix the column name with the table
+	identifier.
+    </UL>
+</UL>
+create_def:
+<UL>
+    <P><I>id</I> <I>typeid</I> [ <I>qualifiers</I> ]*
+    <UL>
+	<P>
+	This is a column name / type specification used when creating a table.
+	At the moment the only <I>typeid</I> the Backplane database supports
+	is <B>VARCHAR</B>.
+	<P>
+	Supported qualifiers are as follows:
+	<UL>
+	    <P><B>UNIQUE</B>
+	    <UL>
+		<P>
+		Indicates that the column is unique in of itself (whether
+		or not is a key).
+	    </UL>
+	    <P><B>PRIMARY KEY</B>
+	    <UL>
+		<P>
+		Indicates that the column is a primary key.  The Backplane
+		database supports multiple primary keys.  The aggregate of
+		all primary keys in a table must be unique but individual
+		primary key columns do not need to be (unless there is only
+		one).
+	    </UL>
+	    <P><B>DEFAULT</B> <I>data</I>
+	    <UL>
+		<P>
+		Specify default data.  Any INSERT into the table that does
+		not specify data for this column will use the specified
+		default.
+	    </UL>
+	    <P><B>NOT NULL</B>
+	    <UL>
+		<P>
+		The column may not be NULL.
+	    </UL>
+	</UL>
+    </UL>
+</UL>
+sql_exp:
+<UL>
+    <P>
+    SQL expressions are used in the <B>WHERE</B> clause of various SQL
+    statements.  The Backplane database currently only supports string-based
+    sql expressions and the <B>AND</B> clause.  It does not support arithmatic
+    and does not yet support the <B>OR</B> clause.  The Backplane database
+    does not yet support parenthesization of expressions.
+    <P><I>sql_exp</I> <B>AND</B> <I>sql_exp</I>
+    <P><I>leaf_exp</I> "<" <I>leaf_exp</I>
+    <BR><I>leaf_exp</I> "<=" <I>leaf_exp</I>
+    <BR><I>leaf_exp</I> ">" <I>leaf_exp</I>
+    <BR><I>leaf_exp</I> ">=" <I>leaf_exp</I>
+    <BR><I>leaf_exp</I> "=" <I>leaf_exp</I>
+    <BR><I>leaf_exp</I> "<>" <I>leaf_exp</I>
+    <UL>
+	<P>
+	Various inequalities.  <B>These are case sensitive string
+	conditionals.</B>
+    </UL>
+    <BR><I>leaf_exp</I> "LIKE" <I>leaf_exp</I>
+    <BR><I>leaf_exp</I> "SAME" <I>leaf_exp</I>
+    <UL>
+	<P>
+	The <B>LIKE</B> clause is a case-insensitive prefix match.  If
+	the left-hand side is an anchored prefix of the right hand side
+	the clause is true.  The <B>SAME</B> clause is a case-insensitive
+	exact match.  These are not sql-standard clauses.
+    </UL>
+</UL>
+leaf_exp:
+<UL>
+    <P>'<I>string</I>'
+    <UL>
+	<P>
+	A string constant
+    </UL>
+    <P><I>column_spec</I>
+    <UL>
+	<P>
+	A column from a table
+    </UL>
+</UL>
+data:
+<UL>
+    <P>'<I>string</I>'
+    <UL>
+	<P>
+	The only datatype currently supported by the Backplane database is
+	the string data type.
+    </UL>
+</UL>
+</BODY>
+</HTML>

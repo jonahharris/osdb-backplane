@@ -1,0 +1,17 @@
+# DMakefile
+#
+# $Backplane: rdbms/man7/DMakefile,v 1.2 2002/09/25 01:48:54 dillon Exp $
+
+MODULE= man7
+MANS= backplane.7
+
+all:
+
+clean:
+
+depend:
+
+install:	_installman
+
+.include ../DMakefile.inc
+

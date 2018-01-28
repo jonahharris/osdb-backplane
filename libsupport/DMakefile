@@ -1,0 +1,28 @@
+# DMakefile
+#
+# $Backplane: rdbms/libsupport/DMakefile,v 1.57 2003/04/11 21:52:32 dillon Exp $
+
+MODULE= support
+LMODULE= libsupport
+SRCS= assert.c zalloc.c hflock.c strndup.c strndup2.c fatal.c \
+	udomconnect.c udomlisten.c dbdir.c asprintf.c \
+	inetconnect.c inetlisten.c \
+	ftab.c escapes.c strhash.c debug.c malloc.c \
+	strdup.c index.c log.c atoxn.c utils.c hex.c \
+	entities.c args.c strcmp.c strchr.c charflags.c \
+	wildcmp.c compat.c simplehash.c path.c \
+	random.c version.c strip.c varlist.c strsubst.c \
+	dbtime.c
+
+HEADERS= export.h log.h lists.h lock.h simplehash.h charflags.h debug.h \
+	version.h cache.h varlist.h stamp.h align.h
+
+all:	_lib
+
+clean:	_cleanlib
+
+depend:	_dependlib
+
+install:	_installlib
+
+.include ../DMakefile.inc

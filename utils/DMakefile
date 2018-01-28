@@ -1,0 +1,39 @@
+# DMakefile
+#
+# $Backplane: rdbms/utils/DMakefile,v 1.27 2003/05/09 16:42:59 dillon Exp $
+
+MODULE= utils
+SRCS= drd.e llquery.c mlquery.c dsql.c drd_link.c ddump.e drd_vacuum.c \
+	dcreatedb.c drecover.c test.e dbdate.c dwait.c dhistory.e \
+	dbrawinfo.c dblog.c
+# I can't find a libreadline for linux so no rsql utility
+#
+.ifos freebsd
+EXTRALIBS= readline ncurses
+SRCS= $(SRCS) rsql.c
+.endif
+
+.ifos darwin
+.iffile /sw/lib/libreadline.a
+.iffile /sw/lib/libncurses.a
+EXTRALIBS= readline ncurses
+SRCS= $(SRCS) rsql.c
+.endif
+.endif
+.endif
+EXTRALIBS ?= 
+
+all:	_utils
+
+clean:	_cleanutils
+
+depend:	_dependutils
+
+install:	_installutils
+
+.include ../DMakefile.inc
+
+.ifos darwin
+CFLAGS= $(CFLAGS) -L/sw/lib -I/sw/include
+.endif
+

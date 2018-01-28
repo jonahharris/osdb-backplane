@@ -1,0 +1,88 @@
+
+	When the quorum is reduced by changing a peer into a snapshot,
+	active queries need be reformulated. (ci_NumPeers)
+
+	Abort long selection query when connection lost/isbroken/isclosed,
+	even if no output.
+
+	Meter selection output to avoid saturating a link.  Require an
+	ack for every N (100?) records.
+
+        IsCounted/Qresponded is broken broken broken for things that need
+	a quorum.  we could end up counting a host *TWICE* when restarting
+	after a failure, which blows up the quorum calculation.
+
+	Initslaveaspeer - comes up as snap, because it looks for the
+	sys.repgroups state in the local copy rather then in the
+	spanning tree.
+
+	shutting down a database while it has active clients broken
+	in synchronize.c
+
+	Must remove cached IDLE instances when route goes away or
+	shutdown will not complete.
+
+	Persistent repcount  should be removed in favor of query of
+	sys.repgroups
+
+	--
+
+
+	We really need to do path optimization when forwarding packets
+
+        Synchronizer is only copying system table, what about other 
+	physical tables?
+
+	the replicator is losing its VC to other replicators every once
+	in a while.  why?
+
+	TRANSACTIONAL LOCKING!
+
+	POSIX locks fail utterly with threads
+
+	on rollback need to recalculate new fts at begin of the next
+	commit ?
+
+	Deadlock handling 
+
+	simultanious same-commit-ts chosen handling (shouldn't happen,
+	need quorum.  check). 
+
+	Snapshot host support (in quorum calculation / readonly op)
+	Security (read-only access from snapshot, no non-synchronization
+	queries allowed).
+
+	Embed MinCTs in URLs to guarentee database consistency from the 
+	point of view of a client.
+
+	Implement 'now' timestamp, or make it automatically MinCTs?
+
+	Only commit to a quorum??  Don't worry about the other hosts
+	(performance / reliability hack)
+
+	Flow control for synchronization (1000 records?)
+
+	r_ScanTs not reset?  Do we reset it?
+
+	when syncing, what if transaction dump is lost in the middle?
+
+	when VC is lost, instances are marked failed.  slave instances
+	will go away entirely.  Master instances need to be retried
+	when the VC manager reforges the link. XXX
+
+	Wakeup failed instances when a VC is reforged
+
+	CAn't replay all messages when lose/regain quorum client.c
+
+	for any given instance, the next freeze point must be the previous
+	commit ts.
+
+	direct mode does not use new hello packets for CLHelloMsg
+
+	XXX when receiving a packet over link adjust sequence number
+	for (hostA,linkHost) to reflect packet seqno which will prevent
+	us from bouncing the packekt back to the routing node.
+
+	XXX ref counts for database vs instance (parent ref)
+
+	NEXT_SEQ_NO -- rollover doesn't work right / see pkt.c

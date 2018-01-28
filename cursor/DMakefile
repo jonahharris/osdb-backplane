@@ -1,0 +1,17 @@
+# DMakefile
+#
+# $Backplane: rdbms/cursor/DMakefile,v 1.8 2002/09/25 01:48:41 dillon Exp $
+
+MODULE= drd_cursor
+SRCS= main.c lex.c parse.c
+
+all:	_exe
+
+clean:	_cleanexe
+
+depend:	_dependexe
+
+install: _installexe
+
+.include ../DMakefile.inc
+

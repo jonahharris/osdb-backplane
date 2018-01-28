@@ -1,0 +1,34 @@
+##################################################################
+#
+# SAMPLE SCHEMA FILE
+#
+#	WORKFLOW.ITEM 	- Main workflow tracking record
+#
+#	Tracks workflow and approval chain items
+
+begin;
+
+create schema workflow;
+
+create table workflow.item (
+    wfdate	varchar  PRIMARY KEY,	# timestamp/sequence number of item	
+    cid		varchar,		# customer id
+    acctid	varchar,		# account id
+    apprvid	varchar,		# approval chain id
+    step	varchar,		# current step of approval chain	
+    srcuser	varchar,		# database user who created item
+    srcdep	varchar,		# department that item came from
+    dstuser	varchar, 		# destination user
+    dstdep	varchar,		# destination department
+    priority	varchar,		# priority of work item; 1 = High, 2 = Medium, 3 = Low
+    cmdate	varchar,		# timestamp of most recent comment
+    flags	varchar,	 	# flags	
+    anno	varchar,		# annotation (CLOSED, RETURNED,...)
+    subject	varchar,		# summary of workflow item
+    target      varchar 		# desired status of account upon 
+					# completion of an in-progress
+					# approval chain
+);
+
+commit;
+

@@ -1,0 +1,301 @@
+<HTML>
+<HEAD>
+<TITLE>Interfacing The Backplane Inc. Fault-Tolerant DRDBMS to C - $Backplane: rdbms/docs/cinterface.html,v 1.4 2003/05/31 07:44:36 dillon Exp $</TITLE>
+</HEAD>
+<BODY>
+<CENTER><H2><B>Interfacing The Backplane Inc. Fault-Tolerate DRDBMS to C</B></H2></CENTER>
+<CENTER><H2><B>10 April 2003</B></H2></CENTER>
+
+<P><H2><B>(0) Special note on C interfacing work in progress</B></H2>
+<UL>
+    <P>
+    <B>Note that we are currently recoding the C interface to be less 
+    interdependant on other backplane libraries.  In particular, we are
+    recoding the interface to integrate with pthreads environments
+    much better.  The API calls will remain the same but we hope to reduce
+    the number of #include's and link elements required.</B>
+</UL>
+<P><H2><B>(I) General build and link environment</B></H2>
+<UL>
+    <P>
+    Integration of the Backplane database into a C application is accomplished
+    primarily by linking against the <B>libclient</B> or <B>libpclient</B>
+    libraries.   If you want to use Backplane's native threading support
+    use <B>libclient</B>.  If you want to use pthreads use <B>libpclient</B>.
+    Note that when using Backplane's native threading support you should
+    use a <B>task_main()</B> entry point instead of a <B>main()</B> entry
+    point.
+    <P>
+    If you are using Backplane's native threading support you must 
+    also link in the Backplane libthreads and libsupport.  If you are using
+    pthread support (i.e. you are using libpclient instead of libclient)
+    you should only link in the Backplane libsupport.
+    These libraries usually reside in <B>/usr/local/backplane/lib</B>.
+    The proper C compile/link line would
+    look something like this (see the <B>samples</B> directory, typically
+    <B>/usr/local/backplane/samples</B>, for a working example).
+    <UL>
+	<P><PRE>
+INCLS= /usr/local/backplane/include
+LIBS= /usr/local/backplane/lib
+CFLAGS= -D_BACKPLANE_BASE=/usr/local/backplane -I$(INCLS)
+LFLAGS= -L$(LIBS) -lclient -lthreads -lsupport
+#LFLAGS= -L$(LIBS) -lpclient -lsupport
+CC ?= cc
+
+test:	test.c
+	 drd_cursor test.c test_drd.c
+	 $(CC) $(CFLAGS) test_drd.c $(LFLAGS) -o test
+    </PRE></UL>
+    <P>
+    The C modules you write typically looks something like this:
+    <UL>
+	<P><PRE>
+/*
+ * TEST.E
+ */
+
+#include <sys/types.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <stdarg.h>
+#include <libdbcore/types.h>
+#include <libsupport/export.h>
+/*#include <libthreads/export.h> (include if using backplane threads)*/
+#include <rdbms/errors.h>
+#include <libpclient/pexport.h> /* use libclient/export.h w/ Backplane thrds */
+
+database_t Db;	/* root database handle */
+database_t DbI;	/* database instance handle */
+dbstamp_t  FTs;	/* freeze timestamp */
+
+int
+main(int ac, char **av)
+{
+    int eno;
+    int status;
+
+    Db = OpenCLDataBase("test", &eno);
+    if (Db == NULL)
+	fatal("OpenCLDataBase error %d (%s)\n", eno, GetCLErrorDesc(eno));
+    DbI = OpenCLInstance(Db, &FTs, CLTYPE_RW);	/* or CLTYPE_RO */
+    if (DbI == NULL)
+	fatal("OpenCLInstance error\n");
+
+    /*
+     * Now some embedded cursors code
+     *
+     * CREATE SCHEMA test;
+     * CREATE TABLE test.test ( data varchar, key varchar primary key );
+     * LOAD INSERT INTO test.test ( key, data ) {
+     * 	   VALUES ('key1', 'data1' );
+     * 	   VALUES ('key2', 'data2' );
+     * }
+     */
+    BEGIN(DbI, FTs, status) {
+	SELECT t.key, t.data FROM test.test=t WHERE t.key > '0';
+	{
+	    printf("KEY %s DATA %s\n", t.key, t.data);
+	    /*
+	     * Transactions can be arbitrarily nested.  Any modifications you
+	     * make in a nested transactions can be rolled-back by breaking
+	     * out of it with ROLLBACK, or committed.  Committing a
+	     * sub-transactions simply integrates the changes into the parent
+	     * transaction, only a commit at the top level actually commits
+	     * to the physical database.
+	     */
+	    /* BEGIN { ... } */
+
+	    /*
+	     * You can arbitrarily nest other queries, including other
+	     * SELECTs.  Exception: You cannot nest queries if a streaming
+	     * select is used.
+	     */
+	    UPDATE test.test SET t.data = 'x' WHERE t.data = 'y';
+	}
+	if (RESULT < 0)
+	    printf("SELECT on test.test key and data failed\n");
+
+	/*
+	 * In this example I don't commit any of the updates I did.
+	 */
+	ROLLBACK;
+    }
+    /*
+     * At this point status contains the return status.  0 indicates
+     * a successful commit.
+     *
+     * The cursors implementation adjusts FTs to the commit time stamp + 1,
+     * so any following queries will see changes made by prior queries.
+     */
+    return(0);
+}
+    </PRE></UL>
+    <P>
+</UL>
+<P><H2><B>(II) Commit Conflicts, the return status, and Change Visibility</B></H2>
+<UL>
+    <P>
+    Transaction error codes are listed in
+    <B>/usr/local/backplane/include/rdbms/errors.h</B>. 
+    The two most common transaction errors are DBERR_COMMIT1_CONFLICT
+    and DBERR_LOST_LINK.  The Backplane database will generate a commit1
+    conflict if you attempt to commit a transaction whos queries depend on
+    data in the database which has changed relative to the freeze time stamp
+    you specified at the beginning of your query.  When a commit conflict
+    occurs FTs will be adjusted to a timestamp just beyond the conflicting
+    record and you can retry the transaction if you like.  We strongly
+    recommend throwing in a small random delay prior to retrying.
+    <P>
+    It is fairly easy to to play around with commit conflicts.  All you
+    need to do is run <B>dsql</B> on two terminals, <B>begin;</B> a
+    transaction, and issue modifying transactions on both terminals
+    which conflict with each other.
+    <P>
+    If the link to the local replicator is lost you have to close and
+    reopen both the instance and the root database handle.
+    <P>
+    <B>When you are making a modifying transaction any UPDATEs or other changes
+    you make within a transaction or subtransaction will be visible to
+    other queries within the master transaction, but will NOT be visible
+    to other transactions until you (A) commit and (B) the other transaction
+    uses a freeze timestamp which is >= the commit timestamp.  It is 
+    important to note in particular that modifications made in
+    sub-transactions are left in temporary tables and aggregated into their
+    parent transactions.  Those modifications are not visible outside 
+    the master transaction until the master transaction is committed!</B>
+</UL>
+<P><H2><B>(III) Huge Transactions</B></H2>
+<UL>
+    <P>
+    The Backplane database uses opportunistic locking to detect conflicts.
+    This means that the backplane database must record queries made during
+    a transaction.  This record cannot be deleted until the highest level
+    transaction is committed or rolledback.  This record is not deleted
+    when subtransactions (nested BEGINs) complete, which can mean trouble
+    if you want to write a program which operates over thousands or millions
+    of customer records (for example).
+    <P>
+    Lets say you need to do a massive update to all the customer records in
+    a large database.  For example, lets say you are doing a billing run.
+    Theoretically you could BEGIN a transaction and then operate on a
+    million customer records before committing the transaction.  In reality
+    you can't do this without running the Backplane daemons out of memory.
+    You also don't really want to do this in a single transactions because
+    you will likely touch huge portions of the database which means your
+    final commit is likely to fail on a live system where other programs are
+    also interacting and modifying the database.  The best way to solve 
+    this sort of problem is to break the problem set up into two pieces:
+    The first piece is responsible for scanning out the customer ids in the
+    database, the second piece is responsible for doing the work on each
+    customer id.  To avoid doing this in a nested transaction you can open up
+    two independant database instances (e.g. DbI1 and DbI2 instead of just
+    DbI).  The first instance would be used to scan the customer ids, the
+    second instance would be used to perform the work on each customer id.
+    Since the two instances are independant each transaction you do in the
+    second instance will not be nested in the first but will instead
+    be a top-level transaction, greatly reducing the possibility of a conflict
+    occcuring.
+</UL>
+<P><H2><B>(III) Freeze Timestamp and READ-ONLY transactions</B></H2>
+<UL>
+    <P>
+    The vast majority of database operations typically performed are
+    non-modifying (read-only) transactions.  In the Backplane cursors 
+    implementation you can use <B>BEGINRO</B> instead of <B>BEGIN</B>
+    to denote a read-only transaction.  Using <B>BEGINRO</B> generates an
+    implied <B>ROLLBACK</B> so you do not have to specify <B>ROLLBACK</B>
+    to terminate your transaction (unless you want to use <B>ROLLBACK</B>
+    to early-terminate a transaction).  Backplane does not bother to record
+    queries in non-modifying transactions (but be careful: the toplevel
+    transaction must be non-modifying for Backplane to not record queries in
+    non-modifying sub-transactions!).  This means that you can perform
+    an infinite number of queries within such transactions without having to
+    worry about running the Backplane database out of temporary memory.
+    <P>
+    Additionaly, since the Backplane database is a historical database,
+    data consistency within such transactions is maintained simply by using
+    the same freeze time stamp.  The Backplane database does not need to
+    maintain any record locks whatsoever.  You can guarentee data consistency
+    by specifying the same freeze time stamp across multiple top-level
+    transactions.
+    <P>
+    <B>Warning: if you do a modifying transaction and then do a second
+    transaction that specifies a freeze timestamp for the database which is
+    prior to the modifications, your queries in the second transaction will
+    not see the modifications you made in the first!  The cursors 
+    implementation automatically updates the freeze timestamp specified
+    in the BEGIN clause when you make a modifying transaction.</B>  This
+    feature can also be used to maintain consistency across separate program
+    executions (such as separate CGI executions in a web interface) without
+    having to maintain an active transaction or process between queries.
+    <P>
+    It should also be noted that the freeze timestamp is only used in the
+    top-level BEGIN() sequence and will remain fixed at that value for any
+    sub-transactions.  However, for current and future compatibility you
+    should always specify the same freeze timestamp in any sub-transactions
+    that you specified in the top-level transaction.
+</UL>
+<P><H2><B>(IV) Nested SELECTs</B></H2>
+<UL>
+    <P>
+    The Backplane cursors implementation allows nested transactions and
+    nested SELECTs within a transaction.   This is an extremely powerful
+    mechanism that allows you to treat your SQL programs almost like 
+    arbitrarily nestable subroutines.  To accomplish this, however, the
+    cursors implementation collects all rows from a SELECT query before
+    initiating the loop.  If you are making a SELECT which has the potential
+    to return millions of records this data collection can run your process
+    out of memory and you should consider using a <I>streaming</I> transaction
+    to perform the SELECT.  The format for a streaming transaction is:
+    <UL>
+	<P><PRE>
+BEGINRO(dbi, freezets, status) STREAMING { ... }
+	</PRE>
+    </UL>
+    <P>
+    <B>There are severe nesting limitiations within a streaming transaction!
+    You cannot nest any SQL command or sub-transaction within a streaming
+    SELECT because the cursors implementation collects the row results from
+    the select on-demand and the instance link is not available for other
+    commands.  In order to nest SQL commands within a streaming query you
+    must use multiple database instances (e.g. DbI1 and DbI2 instead of DbI)
+    and you must be fairly careful in regards to data consistency.</B>
+    Streaming queries are primarily used in two situations:  (1) When you are
+    dumping large amounts of data.  The Backplane <B>ddump</B> program 
+    uses streaming queries, for example.  And (2) When you need to process 
+    a large number of compartmentalizable entities, such as when you need to
+    bulk-process a customer list and wish to update information for each
+    customer.
+</UL>
+<P><H2><B>(V) ROLLBACKs and Commits</B></H2>
+<UL>
+    <P>
+    A transaction is automatically committed if you fall-through the
+    end-brace of a BEGIN { } sequence.  At any point within the transaction
+    you can instead issue a <B>ROLLBACK;</B> sql command which will abort
+    the current [sub]transaction and skip to the end of the nearest
+    BEGIN's end-brace.  Rolling back a sub-transaction undoes any 
+    modifications made within that transaction without undoing modifications
+    made in the parent transaction(s).
+    <P>
+    Generally speaking you should use read-only transactions and
+    sub-transactions (BEGINRO instead of BEGIN) for non-modifying
+    operations whenever possible.  Non-modifying transactions only need
+    to talk to one replicated copy of the database and do not need to
+    record the queries for conflict resolution, whereas modifying 
+    transactions must talk to at least a quorum (note 1) and must also
+    record queries made during the transaction.
+    <P>
+    <I>note 1: The backplane database can be replicated, with any number
+    of full peers and snapshots.  If you utilize the peer replication 
+    capability of the database then modifying transactions must talk to
+    at least a quorum of peers.  So, for example, if you have 3 peers and
+    30 snapshots a modifying transaction would have to talk to at least 2
+    of the peers.  A non-modifying transaction, on the otherhand, could
+    operate to completion just by talking to one of the snapshots.</I>
+</UL>
+</BODY>
+</HTML>

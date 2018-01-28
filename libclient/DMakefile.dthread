@@ -1,0 +1,18 @@
+# DMakefile
+#
+# $Backplane: rdbms/libclient/DMakefile.dthread,v 1.1 2003/04/27 20:28:08 dillon Exp $
+
+MODULE= client
+LMODULE= libclient
+SRCS= globals.c user.c client.c clientmsg.c error.c validate.c
+
+HEADERS= export.h clientmsg.h
+
+all:	_lib
+
+clean:	_cleanlib
+
+install:	_installlib
+
+.include ../DMakefile.inc
+

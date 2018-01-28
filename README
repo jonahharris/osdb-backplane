@@ -1,0 +1,154 @@
+
+			README FILE FOR BACKPLANE DATABASE
+
+(I) Building the distribution, testing the basic workings
+
+    (1) Download and build dxmake.  The dxmake distribution is available
+	as shown below.  At a minimum version 2.12 must be used (if you
+	use 2.11 the php install: target will not properly install as root).
+
+	    http://apollo.backplane.com/FreeBSDPorts/
+	    http://apollo.backplane.com/FreeBSDPorts/dxmake-2.12.tar.gz
+
+	If you are on a FreeBSD system, just make all install after unpacking
+	the archive:
+
+	    make all install
+
+	If you are not on a FreeBSD system, try building and installing
+	using the portable makefile, aka:
+
+	   make -f Makefile.portable all install
+
+    (2) Download and build the RDBMS system using dxmake.  That is the
+	distribution where this README file resides in.  DECIDE WHETHER
+	YOU WANT TO BUILD AND INSTALL AS A USER OR AS ROOT.  If you build
+	and install as root the distribution will be installed in
+	/usr/local/backplane.  If you build and install as a user the
+	distribution will be installed in ~/backplane.  You must both
+	build *AND* install as the same userid or you will confuse the
+	run-time, but you can run the system as any userid by specifying
+	the appropriate RDBMS_DIR environment variable.
+
+	http://apollo.backplane.com/FreeBSDPorts/backplane-1.05.tar.gz
+
+	tar xvzpf backplane-1.05.tar.gz
+	cd backplane-1.05
+	dxmake
+	dxmake install
+
+    (3) Adjust your manual path to include the backplane manual pages.
+	Either add an entry to /etc/manpath.config or adjust your
+	MANPATH environment variable or use the -M option to the 'man'
+	program to specify a manual path.  The installed manual pages
+	are in /usr/local/backplane/man or ~/backplane/man depending
+	on how you built/installed the system.
+
+    (4) Adjust your path to include the backplane bin directory.  If you
+	installed backplane as a user rather then root you would add
+	~/backplane/bin to your path.  If you installed backplane as root
+	you would add /usr/local/backplane/bin to your path.
+
+    (5) TEST the database by creating a run-time directory to hold a
+	test database, setting up your environment to point at it,
+	and creating a test database with the replicator (using a convenient
+	dxmake target):
+
+	mkdir ~/backplane/drdbms
+	setenv RDBMS_DIR ~/backplane/drdbms
+	dxmake test
+
+	The output will look something like this:
+
+apollo:/home/dillon/rdbms> dxmake test
+    /home/dillon/backplane/bin/replicator -D /home/dillon/backplane/drdbms -QUIT
+Unable to connect to /home/dillon/backplane/drdbms/.drd_socket (Connect(unix-domain) failed)(No such file or directory)
+Exit code 1 (Ignored)
+    sleep 1
+    /home/dillon/backplane/bin/replicator -s -D /home/dillon/backplane/drdbms -L /home/dillon/backplane/log/test.log
+    sleep 1
+    /home/dillon/backplane/bin/replicator -D /home/dillon/backplane/drdbms -e test
+(test): Shutdown Database test: not currently running
+    /home/dillon/backplane/bin/replicator -D /home/dillon/backplane/drdbms -REMOVE test
+    /home/dillon/backplane/bin/replicator -D /home/dillon/backplane/drdbms -CREATE test
+    /home/dillon/backplane/bin/replicator -D /home/dillon/backplane/drdbms -b test
+(test): Starting Database test
+DMAKE Done.
+
+    (6) You should now be able to run various backplane related database
+	commands.  For example:
+
+	ddump test
+
+	dsql test
+	(test:?) begin;
+	(test:?) create schema test;
+	(test:?) create table test.test ( key varchar primary key, data varchar );
+	(test:?) commit;
+
+
+			    SUPPORTED SQL COMMANDS
+
+    The file docs/reference.html manual page supplies information on what
+    the database supports.  Please note that in this release the database
+    only supports the 'varchar' type.  Generally speaking the database
+    supports basic table and schema SQL commands, arbitrary joins, basic
+    order by operations, basic table modification commands such as adding
+    and dropping columns, insert, update, delete, and select.  The 
+    backplane database also supports nested transactions.
+
+			    C PROGRAMMING INTERFACE
+
+    The file docs/cinterface.html manual page supplies information on C 
+    interfacing.  The 'drd_cursor' manual page also has an example. 
+    Generally speaking you have to make a few API calls to connect to the
+    database, then you can use the drd_cursor-supported embedded SQL features
+    to embed SQL into your program.  When a transaction completes or is
+    aborted you can check the commit code and retry if appropriate.  Since 
+    this is a historical/freeze based database only outer-transactions can
+    fail, which means you can wrap supporting procedures in a transaction and
+    deal with retries at a higher level instead of in your core code if 
+    you want.  The Backplane interface typically queues the entire response
+    (allowing temporary failures to restart without the C program having
+    to get involved).  When doing huge transactions, such as selecting
+    millions of records, you can reduce memory overhead by specify a
+    streaming operation and use multiple discrete transactions to
+    break the work up.
+
+			    MANUALLY-ENTERED SQL
+
+    Use the dsql (non curses) or rsql (curses with history) interface.
+    (NOTE: as of this writing libreadline has not been integrated into
+    the linux version and rsql is not available).
+
+			    MISC MANUAL PAGES
+
+    backplane		- general manual page on the Backplane system
+    ddump		- dump the contents of the database (with as-of feature)
+    dhistory		- show all changes ever made to the database
+    replicator		- the replicator is the primary management service
+    drd_cursor		- C language cursor preprocessor for C language
+			  interfacing.  This manual page also contains a C
+			  example.
+    drd_database	- this is the database engine core, which is 
+			  automatically started and maintained by the 
+			  replicator.
+
+
+			    VERSION HISTORY
+
+    1.05	Add a simple PHP4 interface
+
+    1.04	Add a Mac OS X port, c/o Manon Goo
+
+    1.03	Fixed more dumb bugs introduced in 1.01, started adding
+		support functions to support the PHP port.
+
+    1.02	Fixed a stupid bug introduced in 1.01
+
+    1.01	Cleaned up pthread support and documentation.
+
+    1.00	Added docs directory
+
+    0.8x	Initial port of Backplane Inc's Internal Database.
+

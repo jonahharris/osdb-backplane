@@ -1,0 +1,113 @@
+
+
+	mmap file
+	call SqlInit on whole file
+
+	call SqlToken until you get the TOK_BEGIN
+	next token must be open  paren
+	scan tokens until close paren (count parens)
+	 ... get string range from first open paren to close paren to
+	 get 'C' expression representing database for API calls.
+
+	BEGIN(Db) {
+
+	Then next token must be open brace.
+	then scan until close brace (counting braces)
+
+	take the pieces between the open and close brace and sqlInit that
+	using a new token.
+
+	Within this sub buffer you need to look for specific SQL keywords
+	and ignore everything else.  WHen you get a specific SQL keyword
+	you then call the parser to parse the SQL command.  At the end of
+	that the token state will be as of the end of the SQL Command and
+	you loop looking for keywords again, until the buffer runs out,
+
+
+main()
+{
+    initCgi();
+
+    .
+    .
+    .
+
+    res = query("SELECT a, b, c FROM fubar WHERE a.cid = 'a'");
+    if (res) {
+	for (row = first(res); row; row = next(res)) {
+	    blahblah(row[0], row[1], row[2]);
+	}
+    }
+}
+
+blah(const char *str)
+{
+    BEGIN(DB) {
+	int RESULT;
+	SELECT t.a, t.b, t.c FROM fubar=t WHERE a.cid = str  {
+	    int RESULT;
+
+	    fubar(t.a);
+
+	    SELECT u.a, u.comment FROM comments=u WHERE t.a = u.a {
+		....
+	    }
+	    if (RESULT < 0) {
+		    ...
+	    }
+	}
+	if (RESULT < 0) {
+	    ...
+	}
+	if (blah)
+	    ROLLBACK
+	else
+	    COMMIT
+    }
+}
+
+    {
+	int RESULT;
+
+	RESULT = PushCLTrans(DB);
+
+	{
+	    char *qry1;
+	    res_t qryRes1;
+	    row_t qryRow1;
+
+	    asprintf(&qry1, 
+		"SELECT t.a, t.b, t.c FROM fubar=t WHERE a.cid = '%s'", 
+		str);
+
+	    qryRes1 = QueryCLTrans(DB, qry1, &RESULT);
+	    for (qryRow1 = ResFirstRow(qryRes1); 
+		qryRow1; 
+		qryRow1 = ResNextRow(qryRes1)
+	    ) {
+		fubar (qryRow1[0]);
+
+		{
+		    char *qry2;
+		    int RESULT;
+		    res_t qryRes2;
+		    row_t qryRow2;
+
+		    asprintf(&qry2, "SELECT u.a, u.comment FROM comments=u WHERE"
+			    "'%s' = u.a",
+			    qryRow2[0]
+		    );
+		    qryRes2 = QueryCLTrans(DB, qry2, &RESULT);
+		    for (qryRow2 = ResFirstRow(qryRes2); 
+			qryRow2; 
+			qryRow2 = ResNextRow(qryRes2)
+		    ) {
+			    ...
+		    }
+		}
+	    }
+	}
+    }
+
+
+

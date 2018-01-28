@@ -1,0 +1,374 @@
+.\" $Backplane: rdbms/man1/replicator.1,v 1.2 2002/09/21 17:09:21 dillon Exp $
+.\"
+.Dd March 18, 2002
+.Dt REPLICATOR 1
+.Os
+.Sh NAME
+.Nm replicator
+.Nd Database connection manager, replicator, spanning-tree/fail-over manager
+.Sh SYNOPSIS
+.Nm
+.Op Fl D Ar dbdir
+.Op Fl V Ar id
+.Op Fl i
+.Op Fl s
+.Op Fl f
+.Op Fl b Ar database
+.Op Fl e Ar database
+.Op Fl r Ar database
+.Op Fl l Ar database:user@host
+.Op Fl l Ar database:/directory_path
+.Op Fl u Ar database:user@host
+.Op Fl u Ar database:/directory_path
+.Op Fl O Ar database:level[:file]
+.Op Fl L Ar logfile
+.Op Fl STOP Ar database
+.Op Fl CREATE Ar database
+.Op Fl SNAP Ar database
+.Op Fl PEER Ar database
+.Op Fl UPGRADE Ar database (experimental)
+.Op Fl DOWNGRADE Ar database (experimental)
+.Op Fl REMOVE Ar database
+.Sh DESCRIPTION
+.Pp
+The
+.Nm
+is responsible for high-level database management.  All high level
+transactions run through it.  The
+.Nm
+is also responsible for replication, fail-over, and synchronization.
+All high level programs using a Backplane database, such as
+.Nm rsql ,
+connect to the
+.Nm .
+.Pp
+It is important to note that once you instantiate and replicate a
+database, you should *NEVER* use
+.Nm llquery
+or
+.Nm mlquery
+to operate on the low-level database.  You should always use
+.Nm rsql
+or
+.Nm dql
+or the cursors or client interface libraries to talk to the replicator.
+.Pp
+The
+.Nm
+is typically started as a server using the
+.Fl s
+and
+.Fl D
+options.  A replicator running in server mode can manage multiple databases.
+If you intend to use replication, the hostname of the machine
+must be unique.  If you intend to run several replicators on the same
+machine (each acting as a virtual machine), each with its own master
+directory, you must further distinguish their official names by using the
+.Fl V
+option.  For example, you might do something like this:
+.Pp
+.Ic replicator -s -D /usr/local/backplane/drdbmsA -V A
+.Pp
+.Ic replicator -s -D /usr/local/backplane/drdbmsB -V B
+.Pp
+It is very important that each replicator have a unique host name.  The
+replicator builds the host name by using the operating-supplied hostname
+and tagging on the virtualhost identifier.  If you only intend to run a
+single replicator on a host, you do not need to supply a virtual tag.
+.Pp
+Once you are running the replicator you can issue commands to it
+by running
+.Nm
+again with the appropriate options.  Options pertaining to the
+starting and stopping of local databases (
+.Fl b
+and
+.Fl e
+) and adding and removing host<->host replication links (
+.Fl l
+and
+.Fl u
+) are persistent.  This means that if the machine crashes or you kill
+and restart the replicator it will automatically restart the active
+databases and reforge previously specified links.  For this reason these
+commands are typically issued manually and not scripted.
+.Pp
+The following options are available:
+.Bl -tag -width indent
+.It Fl D Ar dbdir
+Specify the master directory for the replicator.  If not specified,
+the RDBMS_DIR environment variable is used.  The directory is
+typically something like
+.Pa /usr/local/backplane/drdbmsA .
+We recommend that you set the environment variable up to avoid a lot 
+of typing.  The proper directory should be in your environment or specified
+with this option when starting up the replicator as a server (
+.Fl s
+) and when issuing commands to an already-running replicator.  We 
+recommend that you always specify this option when starting the replicator
+up as a server just to make your scripts crystal clear.
+.It Fl V Ar id
+This option may be used when starting up the replicator in server mode (
+.Fl s
+).  It is used to extend the system-supplied hostname in order to generate
+a completely unique result for this replicator.
+.It Fl f
+When starting the replicator as a server, this tells the replicator to
+run in the foreground rather then detaching itself and running in the
+background.
+.It Fl L Ar logfile
+When starting the replicator as a server, specify the initial location of the
+logfile.  The location can later be changed with the
+.Fl O
+command.
+.It Fl s
+Tell the replicator to start up a server.  You do not specify this option
+when sending commands (see below) to an already-running replicator.
+.It Fl i
+Print out a snapshot of the replicator's internal state, for debugging.
+.It Fl b Ar database
+(persistent)
+This command attaches a local database to the replicator, making it 
+available for use by other replicators and by local programs such as
+.Nm rsql .
+Before you can attach a database you must first create it with the
+.Fl CREATE ,
+.Fl SNAP ,
+or
+.Fl PEER
+commands.   In the simplest case you will create a database and then
+attach it, like this:
+.Pp
+.Ic replicator -CREATE test
+.Pp
+.Ic replicator -b test
+.It Fl e Ar database
+(persistent)
+Detaches a local database from the replicator, making it
+unavailable to other replicators or by local programs.  A database must
+be detached before it can be vacuumed.  Detachment may not occur instantly
+as the replicator may have to wait for transactions running on the database
+to complete.  Repeating the command will tell you the replicator's current
+status in its attempt to detach the database.
+.It Fl r Ar database
+Forcefully restart the sub-forked replicator and underlying
+database engine(s) by killing them and then re-fork/execing them.  Note
+that this command will break any active connections to the database.
+.It Fl l Ar database:user@host
+(persistent)
+Link the replicator running on this host to a replicator running on
+another host.  The replicator will forge a link using
+.Nm ssh ,
+which you must setup to allow the connection without asking for a 
+password.  A replicator must already be running in server mode on the remote
+host before you can connect to it.  Note that you can still disallow
+shell access via ssh by using the
+.Em command=
+syntax on the remote host's
+.Pa .ssh/authorized_keys
+file to run the
+.Nm drd_link
+program directly.  For initial testing, however, you do not need to do
+this, simply set
+.Nm ssh
+up passwordless and the replicator will
+.Nm ssh
+to the remote host and run the
+.Nm drd_link
+program to connect to the replicator running on the remote host.
+You can poll the state of the link by running
+.Ic replicator -i database
+command.  This is the most difficult command to learn because the
+connection occurs in the background and errors may not be easily 
+reported.  For testing purposes you may wish to run the replicator
+server in foreground mode in another xterm so you can see the ssh
+error messages more clearly.
+.It Fl l Ar database:/directory_path
+(persistent)
+Link the replicator running on this host to another replicator that is
+also running on this host by specifying the master directory path that
+the other replicator is using for its directory (
+.Fl D
+).  This allows you to run several virtual hosts on a single machine
+for testing or other purposes. 
+
+.It Fl u Ar database:user@host
+(persistent)
+Unlink a previously created link.  You must specify the exact same string
+here as you did in the original 
+.Fl l
+linkage.
+.It Fl u Ar database:/directory_path
+(persistent)
+Unlink a previously created link.  You must specify the exact same string
+here as you did in the original 
+.Fl l
+linkage.
+.It Fl O Ar database:level[:file]
+Set the debugging level and optionally change the logfile.  These changes
+are specified on a database-by-database basis.  Debugging levels are
+typically 0 through 9, with 0 being off and 9 spewing out insane amounts
+of debugging information to the log file.
+.It Fl CREATE Ar database
+Create a completely new database.  The database name must not exist
+anywhere at all in the spanning tree.  A new database will be created
+and initialized as a peer, but will not be attached to the replicator
+until you send the
+.Fl b
+command to attach it (as a separate command).
+.Pp
+This command creates a physical database in the replicator's master
+directory.
+.It Fl SNAP Ar database
+Create a snapshot of a database being advertised by another replicator
+(for example, a replicator that you link to or which links to you). 
+The database must exist
+somewhere in the spanning tree of linked replicators.  Creating snapshots
+is utterly trivial and does not involve any modifications to the
+database.  You can add, drop, attach, detach, and destroy snapshot
+databases pretty much at will.
+.Pp
+This command will create the snapshot database but it will not attach
+it to the replicator.  You must attach it using the
+.Fl b
+option as a separate command.  The database is initially completely empty.
+The moment you attach it, the replicator will being synchronizing your
+new snapshot with the other copies in the spanning tree of linked 
+replicators.  You do not have to wait for synchronization to complete
+before you begin issuing commands, the replicator will automatically use
+other more complete copies sitting in the spanning tree until your
+snapshot catches up.
+.Pp
+Snapshots are often used as offsite backups.  It is even possible to
+create a snapshot over a slow connection, like a DSL line or a modem.
+.Pp
+This command creates a physical database in the replicator's master
+directory.  Please see the SYNCHRONIZATION section below for more
+information on synchronization.
+.It Fl PEER Ar database
+Create a peer of a database being advertised by another replicator.
+The database must exist
+somewhere in the spanning tree of linked replicators.  Creating snapshots
+is utterly trivial and does not involve any modifications to the
+database.  You can add, drop, attach, detach, and destroy snapshot
+databases pretty much at will.
+.Pp
+The difference between a PEER and a SNAPshot is that a PEER takes part
+in the quorum commit protocol while SNAPshots do not.  Additionally,
+adding a PEER to your replication group effects how all modifying 
+transactions in the entire replication group operate.  In order to commit
+a change, at least a quorum (half the PEERs plus 1) of PEER databases must
+be operational.  If a quorum is not available, queries will stall until
+a quorum becomes available.  Note that the original database you created
+with
+.Fl CREATE
+is, in fact, a peer.  Backplane makes no distinction between the originally
+created database and other peers.  There is no master.  Replication systems
+typically have either one PEER (the originally created database), or three
+PEERs.  You should never have only 2 peers.  For example, if you
+only have 2 peers then both (quorum = 2/2 + 1 = 2) must be operational
+for any commit to succeed.  If you have 3 peers then only 2 need to be
+operational.  If you have 4 peers then you still need 2.  So having at
+least 3 peers allow you to detach any one peer (or for one to crash) without
+effecting the operation of the replicated database.
+.Pp
+Finally, note that creating a PEER requires a modifying transaction to be
+made to the existing databases.  That is, you must already have a quorum
+before you can add a new PEER.  This is because all PEERs are entered
+into the
+.Ic sys.repgroup
+system table.  The replicator uses this table to calculate the quorum.
+.Pp
+This command creates a physical database in the replicator's master
+directory.  Please see the SYNCHRONIZATION section below for more
+information on synchronization.
+.It Fl UPGRADE Ar database (experimental)
+Don't use this feature yet.
+.It Fl DOWNGRADE Ar database (experimental)
+Don't use this feature yet.
+.It Fl STOP Ar database
+If you are unable to detach a database using
+.Fl e
+then you can forcefully stop the database and its sub-forked replicator
+by using the
+.Fl STOP
+option.  Using this option will interfere with queries running on
+the host in question and may interfere with certain types of queries
+(known as streaming queries) running on other hosts.
+.It Fl REMOVE Ar database
+This option allows you to completely destroy a physical database
+running on the local host.  The database must be detached from
+the replicator (
+.Fl e
+) before it can be destroyed.  For obvious reasons, this command is
+a very dangerous command.  I will repeat:  This command blows away a
+database on the local machine.
+.El
+.Pp
+.Sh SYNCHRONIZATION
+.Pp
+Each host issuing SQL queries or holding a physical copy of a database
+must be running a replicator.  You do not have to run a physical copy
+of a database on a host to access the database if it exists on some
+other replicator that you are linked to.  Replicators can be linked
+to each other using any topology you like.  The result is a spanning
+tree which makes the combined snapshot and peer databases running on
+various machines in the spanning tree available to all the replicators
+in the spanning tree.  Read-only queries will use the closest SNAP or
+PEER database.  Read-write queries will use the closest SNAP or PEER
+database for read operations and use a quorum of PEER databases for
+commits.
+.Pp
+Changes are made to PEER databases via a quorum-based two-phase commit
+mechanism.  Basically, a quorum of PEERs must agree that the commit can
+occur.  Even though other PEERs exist, only a quorum of acknowledgements
+is necessary for the transaction to succeed.  A commit does NOT 
+synchronize the PEERs it was made to, that is the job of the synchronizer.
+.Pp
+The synchronizer is bulit into the replicator.  Every replicator with
+a locally attached database runs a synchronizer.  The synchronizer is
+responsible for collecting all changes made to PEERs and synchronizing
+the locally attached database.  Synchronization allows the synchronization
+timestamp on the local database to be updated which in turn allows the
+local database to take part in transactions that have freeze timestamps
+less then or equal to the new synchronization timestamp.
+.Pp
+The synchronization process is completely incremental and uses the 
+native historical storage capabilities of the database to avoid having
+to keep any change queues.  NO CHANGE QUEUES ARE REQUIRED.  SYNCHRONIZATION
+OCCURS NATIVELY DIRECTLY ON THE PHYSICAL FILES UNDERLYING THE A LOCAL
+DATABASE.  This means that you can detach SNAPshots and PEERs or leave
+a machine in a crashed state indefinitely without having to worry about
+blowing out a queue.  Most other replicated databases in the world utilize
+change queues for synchronization and cannot be arbitrarily detached.
+.Pp
+This arbitrary detachment capability allows you to implement SNAPshots
+over slow links as well as offline 'batch' SNAPshots that synchronize over
+temporary links.  When a local database is reattached after being gone
+for a long time the synchronizer will pick up where it last left off
+and incrementally synchronize the database until it is caught up.  To reduce
+network bandwidth, the synchronizer has a catch-up mode where it talks
+to the nearest SNAP or PEER for the database in question to get the
+catch-up data.  Once caught up, the synchronizer talks to a quorum of
+PEERs in parallel to synchronize changes in near-realtime (as quickly
+as possible).
+.Pp
+Finally, it should be noted that the synchronizer itself uses a quorum
+based protocol.  The synchronization timestamp of a local database,
+knowns as
+.Ic SyncTs ,
+represents a guarentee that the database in question has all data
+related to transactions with a transaction timestamp less then or
+equal to SyncTs.  The synchronizer can update the local database's
+SyncTs directly from a single remote database up to the remote database's
+SyncTs.  Beyond that the synchronizer must obtain incremental data
+from at least a quorum of PEERs (including itself if its local database
+is a PEER) before it can update SyncTs.
+.Sh EXAMPLES
+.Sh ENVIRONMENT
+.Sh SEE ALSO
+.Xr ddump 1
+.Sh HISTORY
+The
+.Nm
+command first appeared in version 1.0

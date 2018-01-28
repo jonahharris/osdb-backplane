@@ -1,0 +1,41 @@
+
+MODULE= php4
+MODULELIBS= dbcore dbtypes nclient
+LIBS= support
+PHPEXT= /usr/local/lib/php/extensions
+
+.include ../DMakefile.inc
+
+CFLAGS= $(CFLAGS) -shared -I../objs -I.. -I/usr/local/include -I/usr/local/include/php -I/usr/local/include/php/Zend -I/usr/local/include/php/TSRM
+
+all:	$(OD) $(OD)/php_backplane.lo
+
+$(OD)/php_backplane.lo : php_backplane.c
+    $(CC) $(CFLAGS) php_backplane.c $(LFLAGS) -o $(OD)/php_backplane.lo
+
+clean:
+    rm -f $(OD)/php_backplane.lo
+    rmdir $(OD)
+
+.ifuser root
+install: $(INSTALLLIB) $(INSTALLLIB)/php_backplane.lo $(PHPEXT)/php_backplane.lo
+
+.else
+install: $(INSTALLLIB) $(INSTALLLIB)/php_backplane.lo
+
+.endif
+
+$(INSTALLLIB)/php_backplane.lo : $(OD)/php_backplane.lo
+    rm -f %(left).new
+    cp %(right) %(left).new
+    chmod 755 %(left).new
+    mv -f %(left).new %(left)
+
+$(PHPEXT)/php_backplane.lo : $(OD)/php_backplane.lo
+    rm -f %(left).new
+    cp %(right) %(left).new
+    chmod 755 %(left).new
+    mv -f %(left).new %(left)
+
+uninstall:
+    rm -f $(INSTALLLIB)/php_backplane.lo $(PHPEXT)/php_backplane.lo
